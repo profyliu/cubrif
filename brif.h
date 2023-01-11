@@ -166,7 +166,7 @@ typedef struct {
 
 
 
-#ifdef _WIN32
+#if defined(_WIN32)
 __declspec(dllexport) factor_t * create_factor(int n);
 __declspec(dllexport) factor_t * copy_factor(int n, factor_t * fm);
 __declspec(dllexport) void delete_factor(factor_t * f);
@@ -194,12 +194,12 @@ __declspec(dllexport) void printRules(rf_model_t *model, int which_tree);
 __declspec(dllexport) data_frame_t *get_data(char inputfile[], rf_model_t **model, int n, int p, int X_only);
 __declspec(dllexport) void build_forest_cuda(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int max_depth, int min_node_size, int ntrees, int nthreads, int blocksize, int seed);
 #else
-extern "C" void factor_t * create_factor(int n);
-extern "C" void factor_t * copy_factor(int n, factor_t * fm);
-extern "C" void void delete_factor(factor_t * f);
-extern "C" void void add_element(factor_t *f, int index, char *name);
-extern "C" void void find_add_element(factor_t *f, int index, char *name);
-extern "C" void rf_model_t *create_empty_model(void);
+extern "C" factor_t * create_factor(int n);
+extern "C" factor_t * copy_factor(int n, factor_t * fm);
+extern "C" void delete_factor(factor_t * f);
+extern "C" void add_element(factor_t *f, int index, char *name);
+extern "C" void find_add_element(factor_t *f, int index, char *name);
+extern "C" rf_model_t *create_empty_model(void);
 extern "C" void predict(rf_model_t *model, bx_info_t * bx_new, double **pred, int vote_method, int nthreads);
 
 extern "C" void get_numeric_summary(numeric_t *vector, int n, numeric_t *min_val, numeric_t *max_val, numeric_t *avg_val);
@@ -220,6 +220,7 @@ extern "C" void fill_name_addr_array(fnode_t *tree, char **name, int start_index
 extern "C" void printRules(rf_model_t *model, int which_tree);
 extern "C" data_frame_t *get_data(char inputfile[], rf_model_t **model, int n, int p, int X_only);
 extern "C" void build_forest_cuda(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int max_depth, int min_node_size, int ntrees, int nthreads, int blocksize, int seed);
+
 #endif
 
 
