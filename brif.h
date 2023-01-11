@@ -221,6 +221,7 @@ extern "C" void fill_name_addr_array(fnode_t *tree, char **name, int start_index
 extern "C" void printRules(rf_model_t *model, int which_tree);
 extern "C" data_frame_t *get_data(char inputfile[], rf_model_t **model, int n, int p, int X_only);
 extern "C" void build_forest_cuda(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int max_depth, int min_node_size, int ntrees, int nthreads, int blocksize, int seed);
+extern "C" void build_forest_hybrid(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int max_depth, int min_node_size, int ntrees, int nthreads, int blocksize, int ubthresh, int seed);
 
 #endif
 

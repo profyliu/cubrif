@@ -95,7 +95,7 @@ int main(int argc, char* argv[]){
         }
     }
 
-    printf("n = %d, p = %d, ntrees = %d, nthreads = %d, GPU = %d, blocksize %d, n_lb_GPU %d\n", n, p, ntrees, nthreads, GPU, blocksize, ubthresh*sizeof(bitblock_t));
+    printf("n = %d, p = %d, ntrees = %d, nthreads = %d, GPU = %d, blocksize %d, n_lb_GPU %ld\n", n, p, ntrees, nthreads, GPU, blocksize, ubthresh*sizeof(bitblock_t));
     printf("min_node_size = %d, max_depth = %d\n", min_node_size, max_depth);
     printf("n_numeric_cuts = %d, n_integer_cuts = %d, max_integer_classes = %d, seed = %d\n", n_numeric_cuts, n_integer_cuts, max_integer_classes, seed);
 
