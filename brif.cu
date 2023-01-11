@@ -47,10 +47,10 @@ ycode_t * copy_ycode(ycode_t * yc);
 int countSetBits(bitblock_t n);
 int count1s(bitblock_t *x, int n_blocks);
 void shuffle_array_first_ps(int *arr, int n, int ps);
-void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int J, int min_node_size, dt_node_t * cur_node, bitblock_t *cur, int n_blocks, int *var_index, int actual_ps, bitblock_t *z3, bitblock_t *z4, int *count, int *child_count, int *candidate_index, int *split_var, int* split_bx);
+void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int J, int min_node_size, dt_node_t * cur_node, bitblock_t *cur, int n_blocks, int *uindex, int *var_index, int actual_ps, bitblock_t *z3, bitblock_t *z4, int *count, int *child_count, int *candidate_index, int *split_var, int* split_bx);
 void bootstrap_index_array(int n, int *array);
 dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int n_blocks, int J, int ps, int max_depth, int min_node_size,
-                      int *child_count, int *count, bitblock_t *cur, bitblock_t *z3, bitblock_t *z4);
+                      int *child_count, int *count, bitblock_t *cur, bitblock_t *useful_cur, bitblock_t *z3, bitblock_t *z4);
 void predict_leaves(dt_leaf_t *leaves, bitblock_t ***bx, int **pred_tree, int J, int n_blocks);
 
 void flatten_tree(dt_node_t *tree, dt_leaf_t **leaves, int J);
@@ -1166,7 +1166,7 @@ void shuffle_array_first_ps(int *arr, int n, int ps){
 
 
 // find the best split_var and split_bx index; z4 is scratch pad; count, split_var, split_bx contain return values
-void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int J, int min_node_size, dt_node_t * cur_node, bitblock_t *cur, int n_blocks, int *var_index, int actual_ps, bitblock_t *z3, bitblock_t *z4, int *count, int *child_count, int *candidate_index, int *split_var, int* split_bx){
+void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int J, int min_node_size, dt_node_t * cur_node, bitblock_t *cur, int n_blocks, int *uindex, int *var_index, int actual_ps, bitblock_t *z3, bitblock_t *z4, int *count, int *child_count, int *candidate_index, int *split_var, int* split_bx){
     int ps = actual_ps;
     int depth = cur_node->depth;
     int *path_var = cur_node->rulepath_var;
@@ -1181,7 +1181,7 @@ void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int
     // get the count of classes
     for(int k = 0; k < J; k++){
         for(int i=0; i < n_blocks; i++){
-            z4[i] = ymat[k][i] & cur[i];
+            z4[i] = ymat[k][uindex[i]] & cur[i];
         }
         count[k] = count1s(z4, n_blocks);
         nobs += count[k]; 
@@ -1230,7 +1230,7 @@ void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int
             }
             split_index = lower_index + rand() % (upper_index - lower_index);  // take a random point
             for(int i = 0; i < n_blocks; i++){
-                z4[i] = cur[i] & bx[j][split_index][i];
+                z4[i] = cur[i] & bx[j][split_index][uindex[i]];
             }
             left_size = count1s(z4, n_blocks);
             right_size = nobs - left_size;
@@ -1243,7 +1243,7 @@ void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int
             cum_child_count = 0;
             for(int k = 0; k < J - 1; k++){
                 for(int i=0; i < n_blocks; i++){
-                    z3[i] = ymat[k][i] & z4[i];
+                    z3[i] = ymat[k][uindex[i]] & z4[i];
                 }
                 child_count[k] = count1s(z3, n_blocks);
                 cum_child_count += child_count[k];
@@ -1297,7 +1297,7 @@ void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int
             split_index = candidate_index[n_tabu_levels + rand() % (nb - n_tabu_levels)];
             
             for(int i = 0; i < n_blocks; i++){
-                z4[i] = cur[i] & bx[j][split_index][i];
+                z4[i] = cur[i] & bx[j][split_index][uindex[i]];
             }
             left_size = count1s(z4, n_blocks);
             right_size = nobs - left_size;
@@ -1310,7 +1310,7 @@ void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int
             cum_child_count = 0;
             for(int k = 0; k < J - 1; k++){
                 for(int i=0; i < n_blocks; i++){
-                    z3[i] = ymat[k][i] & z4[i];
+                    z3[i] = ymat[k][uindex[i]] & z4[i];
                 }
                 child_count[k] = count1s(z3, n_blocks);
                 cum_child_count += child_count[k];
@@ -1347,7 +1347,7 @@ void bootstrap_index_array(int n, int *array){
 }
 
 dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int n_blocks, int J, int ps, int max_depth, int min_node_size,
-                      int *child_count, int *count, bitblock_t *cur, bitblock_t *z3, bitblock_t *z4){
+                      int *child_count, int *count, bitblock_t *cur, bitblock_t *useful_cur, bitblock_t *z3, bitblock_t *z4, int *uindex){
     // unpack inputs
     int *n_bcols = model->n_bcols;
     char *var_types = model->var_types;
@@ -1403,9 +1403,15 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
     */
     memset(cur, 0xff, n_blocks*sizeof(bitblock_t));
 
+    int n_useful_blocks = n_blocks;
+    memset(useful_cur, 0xff, n_useful_blocks*sizeof(bitblock_t));
+    for(int i = 0; i < n_useful_blocks; i++){
+        uindex[i] = i;
+    }
+    
 
     shuffle_array_first_ps(var_index, actual_p, ps);
-    find_best_split(model, bx, ymat, J, min_node_size, cur_node, cur, n_blocks, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
+    find_best_split(model, bx, ymat, J, min_node_size, cur_node, useful_cur, n_useful_blocks, uindex, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
     cur_node->split_var = split_var; 
     cur_node->split_bx = split_bx;
     for(int k = 0; k < J; k++){
@@ -1445,10 +1451,19 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
                 }
             }
         }
+        // eliminate the empty (all zero) blocks from further processing
+        n_useful_blocks = 0;
+        for(int i = 0; i < n_blocks; i++){
+            if(cur[i] != 0){
+                uindex[n_useful_blocks] = i;
+                useful_cur[n_useful_blocks] = cur[i];
+                n_useful_blocks++;
+            }
+        }
 
         if(cur_node->depth < max_depth){
             shuffle_array_first_ps(var_index, actual_p, ps);
-            find_best_split(model, bx, ymat, J, min_node_size, cur_node, cur, n_blocks, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
+            find_best_split(model, bx, ymat, J, min_node_size, cur_node, useful_cur, n_useful_blocks, uindex, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
             cur_node->split_var = split_var; 
             cur_node->split_bx = split_bx;
             for(int k = 0; k < J; k++){
@@ -1457,10 +1472,10 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
         } else {
             // get the count of classes
             for(int k = 0; k < J; k++){
-                for(int i = 0; i < n_blocks; i++){
-                    z4[i] = ymat[k][i] & cur[i];
+                for(int i = 0; i < n_useful_blocks; i++){
+                    z4[i] = ymat[k][uindex[i]] & useful_cur[i];
                 }
-                cur_node->count[k] = count1s(z4, n_blocks);
+                cur_node->count[k] = count1s(z4, n_useful_blocks);
             }
             cur_node->split_var = 0;
             cur_node->split_bx = 0;
@@ -1487,10 +1502,19 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
                 }
             }
         }
+        // eliminate the empty (all zero) blocks from further processing
+        n_useful_blocks = 0;
+        for(int i = 0; i < n_blocks; i++){
+            if(cur[i] != 0){
+                uindex[n_useful_blocks] = i;
+                useful_cur[n_useful_blocks] = cur[i];
+                n_useful_blocks++;
+            }
+        }
 
         if(cur_node->depth < max_depth){
             shuffle_array_first_ps(var_index, actual_p, ps);
-            find_best_split(model, bx, ymat, J, min_node_size, cur_node, cur, n_blocks, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
+            find_best_split(model, bx, ymat, J, min_node_size, cur_node, useful_cur, n_useful_blocks, uindex, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
             cur_node->split_var = split_var; 
             cur_node->split_bx = split_bx;
             for(int k = 0; k < J; k++){
@@ -1499,10 +1523,10 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
         } else {
             // get the count of classes
             for(int k = 0; k < J; k++){
-                for(int i=0; i < n_blocks; i++){
-                    z4[i] = ymat[k][i] & cur[i];
+                for(int i=0; i < n_useful_blocks; i++){
+                    z4[i] = ymat[k][uindex[i]] & useful_cur[i];
                 }
-                cur_node->count[k] = count1s(z4, n_blocks);
+                cur_node->count[k] = count1s(z4, n_useful_blocks);
             }
             cur_node->split_var = 0;
             cur_node->split_bx = 0;
@@ -2637,14 +2661,18 @@ void build_forest(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int
     int **child_count = (int**)malloc(nthreads*sizeof(int*));
     int **count = (int**)malloc(nthreads*sizeof(int*));
     bitblock_t **cur = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
+    bitblock_t **useful_cur = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
     bitblock_t **z4 = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
     bitblock_t **z3 = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
+    int **uindex = (int**)malloc(nthreads*sizeof(int*));
     for(int i = 0; i < nthreads; i++){
         child_count[i] = (int*)malloc(J*sizeof(int));
         count[i] = (int*)malloc(J*sizeof(int)); 
         cur[i] = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
+        useful_cur[i] = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
         z3[i] = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
         z4[i] = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
+        uindex[i] = (int*)malloc(n_blocks*sizeof(int));
     }
 
     dt_node_t **trees = (dt_node_t**)malloc(ntrees*sizeof(dt_node_t*));
@@ -2656,7 +2684,7 @@ void build_forest(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int
         i = omp_get_thread_num();
 #endif
         srand((unsigned) ((unsigned) seed)*t*1013904223L);
-        trees[t] = build_tree(*model, bxall->bx, yc->ymat, n_blocks, J,  ps, max_depth, min_node_size, child_count[i], count[i], cur[i], z3[i], z4[i]);
+        trees[t] = build_tree(*model, bxall->bx, yc->ymat, n_blocks, J,  ps, max_depth, min_node_size, child_count[i], count[i], cur[i], useful_cur[i], z3[i], z4[i], uindex[i]);
     }
 
     (*model)->ntrees = ntrees;
@@ -2666,14 +2694,18 @@ void build_forest(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int
         free(child_count[i]);
         free(count[i]);
         free(cur[i]);
+        free(useful_cur[i]);
         free(z3[i]);
         free(z4[i]);
+        free(uindex[i]);
     }
     free(child_count);
     free(count);
     free(cur);
+    free(useful_cur);
     free(z3);
     free(z4);
+    free(uindex);
 }
 
 
