@@ -48,9 +48,24 @@ int countSetBits(bitblock_t n);
 int count1s(bitblock_t *x, int n_blocks);
 void shuffle_array_first_ps(int *arr, int n, int ps);
 void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int J, int min_node_size, dt_node_t * cur_node, bitblock_t *cur, int n_blocks, int *uindex, int *var_index, int actual_ps, bitblock_t *z3, bitblock_t *z4, int *count, int *child_count, int *candidate_index, int *split_var, int* split_bx);
+void find_best_split_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, dim3 block, dim3 grid, bitblock_t *d_ymat, 
+                            int J, int min_node_size, dt_node_t * cur_node, int *var_index, int actual_ps, 
+                            bitblock_t *d_cur, bitblock_t *d_z3, bitblock_t *d_z4, 
+                            int* d_count, int* d_ocount, unsigned char *d_SetBitTable,
+                            int* ocount, int* child_count, int *count, 
+                            int *candidate_index, int *split_var, int* split_bx, cudaStream_t *streams, int tid);
 void bootstrap_index_array(int n, int *array);
 dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int n_blocks, int J, int ps, int max_depth, int min_node_size,
                       int *child_count, int *count, bitblock_t *cur, bitblock_t *useful_cur, bitblock_t *z3, bitblock_t *z4);
+dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, dim3 block, dim3 grid, bitblock_t *d_ymat, int J, int ps, int max_depth, int min_node_size,
+                            bitblock_t *d_cur, bitblock_t *d_z3, bitblock_t *d_z4, 
+                            int* d_count, int* d_ocount, unsigned char *d_SetBitTable,
+                            int* ocount, int* child_count, int *count, cudaStream_t * streams, int tid);
+dt_node_t* build_tree_hybrid(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, bitblock_t *d_bx, size_t n_blocks, dim3 block, dim3 grid, bitblock_t *d_ymat, int J, int ps, int max_depth, int min_node_size,
+                            bitblock_t *d_cur, bitblock_t *d_z3, bitblock_t *d_z4, 
+                            int* d_count, int* d_ocount, unsigned char *d_SetBitTable,
+                            int* ocount, int* child_count, int *count, cudaStream_t * streams, int tid,
+                            bitblock_t *cur, bitblock_t *useful_cur, bitblock_t *z3, bitblock_t *z4, int *uindex, int ubthresh);
 void predict_leaves(dt_leaf_t *leaves, bitblock_t ***bx, int **pred_tree, int J, int n_blocks);
 
 void flatten_tree(dt_node_t *tree, dt_leaf_t **leaves, int J);
@@ -1396,12 +1411,6 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
     // construct root node
     cur_node = newNode(parent, J, 0);
     root = cur_node;
-    /*
-    for(int i = 0; i < n_blocks; i++){
-        cur[i] = MAXBITBLOCK_VALUE;  // all bits are 1 (assuming bitblock_t is unsigned int)
-    }
-    */
-    memset(cur, 0xff, n_blocks*sizeof(bitblock_t));
 
     int n_useful_blocks = n_blocks;
     memset(useful_cur, 0xff, n_useful_blocks*sizeof(bitblock_t));
@@ -1437,6 +1446,7 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
         // create its left child
         cur_node = newNode(parent, J, LEFT);
         parent->left = cur_node;
+        n_useful_blocks = 0;
         for(int i = 0; i < n_blocks; i++){
             cur[i] = MAXBITBLOCK_VALUE;
             for(int d = 0; d < cur_node->depth; d++){
@@ -1450,17 +1460,14 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
                     //printf("Impossible\n");
                 }
             }
-        }
-        // eliminate the empty (all zero) blocks from further processing
-        n_useful_blocks = 0;
-        for(int i = 0; i < n_blocks; i++){
+            // eliminate the empty (all zero) blocks from further processing
             if(cur[i] != 0){
                 uindex[n_useful_blocks] = i;
                 useful_cur[n_useful_blocks] = cur[i];
                 n_useful_blocks++;
             }
         }
-
+        
         if(cur_node->depth < max_depth){
             shuffle_array_first_ps(var_index, actual_p, ps);
             find_best_split(model, bx, ymat, J, min_node_size, cur_node, useful_cur, n_useful_blocks, uindex, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
@@ -1488,6 +1495,7 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
         // create its right child
         cur_node = newNode(parent, J, RIGHT);
         parent->right = cur_node;
+        n_useful_blocks = 0;
         for(int i = 0; i < n_blocks; i++){
             cur[i] = MAXBITBLOCK_VALUE;
             for(int d = 0; d < cur_node->depth; d++){
@@ -1501,10 +1509,7 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
                     //printf("Impossible\n");
                 }
             }
-        }
-        // eliminate the empty (all zero) blocks from further processing
-        n_useful_blocks = 0;
-        for(int i = 0; i < n_blocks; i++){
+            // eliminate the empty (all zero) blocks from further processing
             if(cur[i] != 0){
                 uindex[n_useful_blocks] = i;
                 useful_cur[n_useful_blocks] = cur[i];
@@ -1944,7 +1949,7 @@ void find_best_split_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, 
     *split_bx = best_split_bx;
 }
 
-dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t ***bx, bitblock_t *d_bx, size_t n_blocks, dim3 block, dim3 grid, bitblock_t *d_ymat, int J, int ps, int max_depth, int min_node_size,
+dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, dim3 block, dim3 grid, bitblock_t *d_ymat, int J, int ps, int max_depth, int min_node_size,
                             bitblock_t *d_cur, bitblock_t *d_z3, bitblock_t *d_z4, 
                             int* d_count, int* d_ocount, unsigned char *d_SetBitTable,
                             int* ocount, int* child_count, int *count, cudaStream_t * streams, int tid){
@@ -2047,7 +2052,6 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t ***bx, bitblock_t *d_bx
                 bx_offset_cols += this_bx;
                 bx_offset = bx_offset_cols * n_blocks;
                 SimpleAnd<<<grid, block, 0, streams[tid]>>>(d_cur, d_bx, bx_offset, n_blocks);
-                //cur[i] &= bx[this_var][this_bx][i];
             } else if(this_var < 0){
                 size_t bx_offset = 0;
                 size_t bx_offset_cols = 0;
@@ -2057,29 +2061,10 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t ***bx, bitblock_t *d_bx
                 bx_offset_cols += this_bx;
                 bx_offset = bx_offset_cols * n_blocks;
                 SimpleAndNot<<<grid, block, 0, streams[tid]>>>(d_cur, d_bx, bx_offset, n_blocks);
-                //cur[i] &= ~bx[-this_var][this_bx][i];
             } else {
                 //printf("Impossible\n");
             }
         }
-
-        /*
-        for(int i = 0; i < n_blocks; i++){
-            cur[i] = MAXBITBLOCK_VALUE;
-            for(int d = 0; d < cur_node->depth; d++){
-                int this_var = cur_node->rulepath_var[d];
-                int this_bx = cur_node->rulepath_bx[d];
-                if(this_var > 0){
-                    cur[i] &= bx[this_var][this_bx][i];
-                } else if(this_var < 0){
-                    cur[i] &= ~bx[-this_var][this_bx][i];
-                } else {
-                    //printf("Impossible\n");
-                }
-            }
-        }
-        cudaMemcpyAsync(d_cur, cur, n_blocks*sizeof(bitblock_t), cudaMemcpyHostToDevice, streams[tid]);
-        */
 
         if(cur_node->depth < max_depth){
             shuffle_array_first_ps(var_index, actual_p, ps);
@@ -2144,7 +2129,6 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t ***bx, bitblock_t *d_bx
                 bx_offset_cols += this_bx;
                 bx_offset = bx_offset_cols * n_blocks;
                 SimpleAnd<<<grid, block, 0, streams[tid]>>>(d_cur, d_bx, bx_offset, n_blocks);
-                //cur[i] &= bx[this_var][this_bx][i];
             } else if(this_var < 0){
                 size_t bx_offset = 0;
                 size_t bx_offset_cols = 0;
@@ -2154,29 +2138,10 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t ***bx, bitblock_t *d_bx
                 bx_offset_cols += this_bx;
                 bx_offset = bx_offset_cols * n_blocks;
                 SimpleAndNot<<<grid, block, 0, streams[tid]>>>(d_cur, d_bx, bx_offset, n_blocks);
-                //cur[i] &= ~bx[-this_var][this_bx][i];
             } else {
                 //printf("Impossible\n");
             }
         }
-
-        /*
-        for(int i = 0; i < n_blocks; i++){
-            cur[i] = MAXBITBLOCK_VALUE;
-            for(int d = 0; d < cur_node->depth; d++){
-                int this_var = cur_node->rulepath_var[d];
-                int this_bx = cur_node->rulepath_bx[d];
-                if(this_var > 0){
-                    cur[i] &= bx[this_var][this_bx][i];
-                } else if(this_var < 0){
-                    cur[i] &= ~bx[-this_var][this_bx][i];
-                } else {
-                    //printf("Impossible\n");
-                }
-            }
-        }
-        cudaMemcpyAsync(d_cur, cur, n_blocks*sizeof(bitblock_t), cudaMemcpyHostToDevice, streams[tid]);
-        */
 
         if(cur_node->depth < max_depth){
             shuffle_array_first_ps(var_index, actual_p, ps);
@@ -2214,6 +2179,267 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t ***bx, bitblock_t *d_bx
                 }
                 cur_node->count[k] = count1s(z4, n_blocks);
                 */
+            }
+            cur_node->split_var = 0;
+            cur_node->split_bx = 0;
+        }
+        if(cur_node->split_var!=0){
+            // put the node in queue
+            queue[tail++] = cur_node;
+        }
+    }
+
+    // clean up
+    if(candidate_index != NULL) free(candidate_index);
+    //free(cur);
+    free(var_index);
+    return(root);
+}
+
+
+
+// Do row-wise calculations (bitwise op and reduce) using cuda and cpu depending on size of the node
+// it will invoke find_best_split and find_best_split_cuda based on need
+dt_node_t* build_tree_hybrid(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, bitblock_t *d_bx, size_t n_blocks, dim3 block, dim3 grid, bitblock_t *d_ymat, int J, int ps, int max_depth, int min_node_size,
+                            bitblock_t *d_cur, bitblock_t *d_z3, bitblock_t *d_z4, 
+                            int* d_count, int* d_ocount, unsigned char *d_SetBitTable,
+                            int* ocount, int* child_count, int *count, cudaStream_t * streams, int tid,
+                            bitblock_t *cur, bitblock_t *useful_cur, bitblock_t *z3, bitblock_t *z4, int *uindex, int ubthresh){
+    // unpack inputs
+    int *n_bcols = model->n_bcols;
+    char *var_types = model->var_types;
+    int p = model->p;
+
+
+    dt_node_t* queue[MAXNODES]; 
+    int head = 0; 
+    int tail = 0;
+    dt_node_t* parent = NULL;
+    dt_node_t* root = NULL;
+    dt_node_t* cur_node = NULL;
+    int split_var, split_bx;
+    
+
+    int max_factor_nlevels = 0;
+    int actual_p = 0;
+    for(int j = 1; j <= p; j++){
+        if(n_bcols[j] > 0) actual_p++;
+        if(var_types[j] == 'f'){
+            if(n_bcols[j] > max_factor_nlevels){
+                max_factor_nlevels = n_bcols[j];
+            }
+        }
+    }
+    int *var_index = (int*)malloc(actual_p*sizeof(int));
+    int cnt_p = 0;
+    for(int j = 1; j <= p; j++){
+        if(n_bcols[j] == 0) continue;
+        var_index[cnt_p++] = j;
+    }
+    
+    int *candidate_index = NULL;
+    if(max_factor_nlevels > 0){
+        candidate_index = (int*)malloc(max_factor_nlevels*sizeof(int));
+    }
+    
+    int actual_ps = MIN(ps, actual_p);
+    /*
+    // if actual_ps is too small (e.g., 1 or 2) nodes may become leaf prematurely
+    if(actual_p < 7 && actual_ps < actual_p / 2 + 1){
+        actual_ps = actual_p / 2 + 1;
+    }
+    */
+    shuffle_array_first_ps(var_index, actual_p, ps);
+
+    // construct root node
+    cur_node = newNode(parent, J, 0);
+    root = cur_node;
+    
+    
+    int n_useful_blocks = n_blocks;
+    // Decide: use GPU or CPU based on n_useful_blocks
+    if(n_useful_blocks >= ubthresh){
+        // Use GPU
+        cudaMemsetAsync(d_cur, 0xff, n_blocks*sizeof(bitblock_t), streams[tid]);
+        find_best_split_cuda(model, d_bx, n_blocks, block, grid, d_ymat, 
+                                J, min_node_size, cur_node, var_index, actual_ps, 
+                                d_cur, d_z3, d_z4, 
+                                d_count, d_ocount, d_SetBitTable,
+                                ocount, child_count, count, 
+                                candidate_index, &split_var, &split_bx, streams, tid);
+    } else {
+        // Use CPU
+        memset(useful_cur, 0xff, n_useful_blocks*sizeof(bitblock_t));
+        for(int i = 0; i < n_useful_blocks; i++){
+            uindex[i] = i;
+        }        
+        find_best_split(model, bx, ymat, J, min_node_size, cur_node, useful_cur, n_useful_blocks, uindex, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
+    }
+
+
+    cur_node->split_var = split_var; 
+    cur_node->split_bx = split_bx;
+    for(int k = 0; k < J; k++){
+        cur_node->count[k] = count[k];
+    }
+    if(cur_node->split_var!=0 && cur_node->depth < max_depth){
+        // put the node in queue
+        queue[tail++] = cur_node;
+    }
+
+    // if queue is not empty, process the node at queue head
+    while(tail > head){
+        // if the buffer is full, shift to make room
+        if(tail >= MAXNODES - 2){
+            for(int i = 0; i < tail - head; i++){
+                queue[i] = queue[head+i];
+            }
+
+            tail = tail - head;
+            head = 0;
+        }
+        parent = queue[head++];
+        // create its left child
+        cur_node = newNode(parent, J, LEFT);
+        parent->left = cur_node;
+
+        n_useful_blocks = 0;
+        for(int i = 0; i < n_blocks; i++){
+            cur[i] = MAXBITBLOCK_VALUE;
+            for(int d = 0; d < cur_node->depth; d++){
+                int this_var = cur_node->rulepath_var[d];
+                int this_bx = cur_node->rulepath_bx[d];
+                if(this_var > 0){
+                    cur[i] &= bx[this_var][this_bx][i];
+                } else if(this_var < 0){
+                    cur[i] &= ~bx[-this_var][this_bx][i];
+                } else {
+                    //printf("Impossible\n");
+                }
+            }
+            // eliminate the empty (all zero) blocks from further processing
+            if(cur[i] != 0){
+                uindex[n_useful_blocks] = i;
+                useful_cur[n_useful_blocks] = cur[i];
+                n_useful_blocks++;
+            }
+        }
+        
+        if(cur_node->depth < max_depth){
+            shuffle_array_first_ps(var_index, actual_p, ps);
+            // Decide: GPU or CPU based on n_useful_blocks
+            if(n_useful_blocks >= ubthresh){
+                // Use GPU
+                cudaMemcpyAsync(d_cur, cur, n_blocks*sizeof(bitblock_t), cudaMemcpyHostToDevice, streams[tid]);            
+                find_best_split_cuda(model, d_bx, n_blocks, block, grid, d_ymat, 
+                                        J, min_node_size, cur_node, var_index, actual_ps, 
+                                        d_cur, d_z3, d_z4, 
+                                        d_count, d_ocount, d_SetBitTable,
+                                        ocount, child_count, count, 
+                                        candidate_index, &split_var, &split_bx, streams, tid);   
+            } else {
+                // Use CPU
+                find_best_split(model, bx, ymat, J, min_node_size, cur_node, useful_cur, n_useful_blocks, uindex, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);                
+            }
+            cur_node->split_var = split_var; 
+            cur_node->split_bx = split_bx;
+            for(int k = 0; k < J; k++){
+                cur_node->count[k] = count[k];
+            }
+        } else {
+            // get the count of classes
+            for(int k = 0; k < J; k++){
+                if(n_useful_blocks >= ubthresh){
+                    // launch the AddCount kernel
+                    size_t ymat_offset = k*n_blocks;
+                    AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_ymat, d_count, d_ocount, ymat_offset, n_blocks, d_SetBitTable);           
+                    // copy reduced result Device to Host
+                    cudaMemcpyAsync(ocount, d_ocount, grid.x*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
+                    cudaStreamSynchronize(streams[tid]);
+                    cur_node->count[k] = 0;
+                    for(int i = 0; i < (int)grid.x; i++) 
+                        cur_node->count[k] += ocount[i];
+                } else {
+                    for(int i = 0; i < n_useful_blocks; i++){
+                        z4[i] = ymat[k][uindex[i]] & useful_cur[i];
+                    }
+                    cur_node->count[k] = count1s(z4, n_useful_blocks);
+                }
+            }
+            cur_node->split_var = 0;
+            cur_node->split_bx = 0;
+        }
+        if(cur_node->split_var!=0){
+            // put the node in queue
+            queue[tail++] = cur_node;
+        }
+
+        // create its right child
+        cur_node = newNode(parent, J, RIGHT);
+        parent->right = cur_node;
+
+        n_useful_blocks = 0;
+        for(int i = 0; i < n_blocks; i++){
+            cur[i] = MAXBITBLOCK_VALUE;
+            for(int d = 0; d < cur_node->depth; d++){
+                int this_var = cur_node->rulepath_var[d];
+                int this_bx = cur_node->rulepath_bx[d];
+                if(this_var > 0){
+                    cur[i] &= bx[this_var][this_bx][i];
+                } else if(this_var < 0){
+                    cur[i] &= ~bx[-this_var][this_bx][i];
+                } else {
+                    //printf("Impossible\n");
+                }
+            }
+            // eliminate the empty (all zero) blocks from further processing
+            if(cur[i] != 0){
+                uindex[n_useful_blocks] = i;
+                useful_cur[n_useful_blocks] = cur[i];
+                n_useful_blocks++;
+            }
+        }
+
+        if(cur_node->depth < max_depth){
+            shuffle_array_first_ps(var_index, actual_p, ps);
+            // Decide: GPU or CPU based on n_useful_blocks
+            if(n_useful_blocks >= ubthresh){
+                // Use GPU
+                cudaMemcpyAsync(d_cur, cur, n_blocks*sizeof(bitblock_t), cudaMemcpyHostToDevice, streams[tid]);            
+                find_best_split_cuda(model, d_bx, n_blocks, block, grid, d_ymat, 
+                                        J, min_node_size, cur_node, var_index, actual_ps, 
+                                        d_cur, d_z3, d_z4, 
+                                        d_count, d_ocount, d_SetBitTable,
+                                        ocount, child_count, count, 
+                                        candidate_index, &split_var, &split_bx, streams, tid);   
+            } else {
+                // Use CPU
+                find_best_split(model, bx, ymat, J, min_node_size, cur_node, useful_cur, n_useful_blocks, uindex, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);                
+            }
+            cur_node->split_var = split_var; 
+            cur_node->split_bx = split_bx;
+            for(int k = 0; k < J; k++){
+                cur_node->count[k] = count[k];
+            }
+        } else {
+            // get the count of classes
+            for(int k = 0; k < J; k++){
+                if(n_useful_blocks >= ubthresh){
+                    // launch the AddCount kernel
+                    size_t ymat_offset = k*n_blocks;
+                    AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_ymat, d_count, d_ocount, ymat_offset, n_blocks, d_SetBitTable);
+                    // copy reduced result Device to Host
+                    cudaMemcpyAsync(ocount, d_ocount, grid.x*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
+                    cudaStreamSynchronize(streams[tid]);
+                    cur_node->count[k] = 0;
+                    for(int i = 0; i < (int)grid.x; i++) 
+                        cur_node->count[k] += ocount[i];
+                } else {
+                    for(int i = 0; i < n_useful_blocks; i++){
+                        z4[i] = ymat[k][uindex[i]] & useful_cur[i];
+                    }
+                    cur_node->count[k] = count1s(z4, n_useful_blocks);                    
+                }
             }
             cur_node->split_var = 0;
             cur_node->split_bx = 0;
@@ -2809,7 +3035,7 @@ void build_forest_cuda(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps
 #ifdef _OPENMP
         i = omp_get_thread_num();
 #endif
-        trees[t] = build_tree_cuda(*model, bxall->bx, d_bx, n_blocks, block, grid, d_ymat, J, ps, max_depth, min_node_size, 
+        trees[t] = build_tree_cuda(*model, d_bx, n_blocks, block, grid, d_ymat, J, ps, max_depth, min_node_size, 
                                     d_cur[i], d_z3[i], d_z4[i], d_count[i], d_ocount[i], d_SetBitTable, ocount[i], child_count[i], count[i], streams, i);
     }
 
@@ -2846,6 +3072,189 @@ void build_forest_cuda(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps
     free(d_ocount);
     
 }
+
+
+void build_forest_hybrid(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int max_depth, int min_node_size, int ntrees, int nthreads, int blocksize, int ubthresh, int seed){
+#ifdef _OPENMP
+    omp_set_num_threads(nthreads);
+#else
+    nthreads = 1;
+#endif
+    max_depth = MIN(MAXDEPTH, max_depth);
+    ps = MIN(ps, (*model)->p);
+    min_node_size = MAX(1, min_node_size);
+    ntrees = MAX(1, ntrees);
+    int *n_bcols = (*model)->n_bcols;
+    if((*model)->ntrees > 0){
+        //printf("Model already contains a forest.\n");
+        return;
+    }
+    if(!lookup_initialized){
+        fillSetBitTable(SetBitTable, LOOKUP);
+        lookup_initialized = 1;
+    }
+    
+    dt_node_t **trees = (dt_node_t**)malloc(ntrees*sizeof(dt_node_t*));
+
+    int J = yc->nlevels;
+    int n_blocks = bxall->n_blocks;
+
+    // Prepare resources for CPU
+    int **child_count = (int**)malloc(nthreads*sizeof(int*));
+    int **count = (int**)malloc(nthreads*sizeof(int*));
+    bitblock_t **cur = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
+    bitblock_t **useful_cur = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
+    bitblock_t **z4 = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
+    bitblock_t **z3 = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
+    int **uindex = (int**)malloc(nthreads*sizeof(int*));
+    for(int i = 0; i < nthreads; i++){
+        child_count[i] = (int*)malloc(J*sizeof(int));
+        count[i] = (int*)malloc(J*sizeof(int)); 
+        cur[i] = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
+        useful_cur[i] = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
+        z3[i] = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
+        z4[i] = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
+        uindex[i] = (int*)malloc(n_blocks*sizeof(int));
+    }
+    // Decide if GPU is needed at all based on n_blocks
+    if(n_blocks >= ubthresh){
+        // GPU will be used, initialize resources
+        size_t bytes = n_blocks*sizeof(bitblock_t);
+        dim3 block(blocksize, 1);
+        dim3 grid((n_blocks + block.x - 1) / block.x, 1);
+
+        // allocate host memory by thread and initialize values
+        int **ocount = (int**)malloc(nthreads*sizeof(int*));
+        for(int i = 0; i < nthreads; i++){
+            ocount[i] = (int*) malloc(grid.x*sizeof(int));
+        }
+
+        // allocate device memory: read-only common to all threads
+        int p = (*model)->p;
+        int total_n_bcol = 0;
+        for(int j = 1; j <= p; j++){
+            total_n_bcol += n_bcols[j];
+        }
+        bitblock_t *d_bx = NULL;
+        bitblock_t *d_ymat = NULL;
+        unsigned char *d_SetBitTable = NULL;
+        cudaMalloc((void**) &d_bx, total_n_bcol*bytes);
+        cudaMalloc((void**) &d_ymat, J*bytes);
+        cudaMalloc((void**) &d_SetBitTable, LOOKUP*sizeof(unsigned char));
+
+        // allocate device memory by thread
+        bitblock_t **d_cur = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
+        bitblock_t **d_z4 = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
+        bitblock_t **d_z3 = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
+        int **d_count = (int**)malloc(nthreads*sizeof(int*));
+        int **d_ocount = (int**)malloc(nthreads*sizeof(int*));
+
+        for(int i = 0; i < nthreads; i++){
+            cudaMalloc((void**) &d_cur[i], bytes);
+            cudaMalloc((void**) &d_z4[i], bytes);
+            cudaMalloc((void**) &d_z3[i], bytes);
+            cudaMalloc((void**) &d_count[i], n_blocks*sizeof(int));
+            cudaMalloc((void**) &d_ocount[i], grid.x*sizeof(int));        
+        }
+
+        cudaStream_t * streams = (cudaStream_t*)malloc(nthreads*sizeof(cudaStream_t));
+        for(int i = 0; i < nthreads; i++){
+            cudaStreamCreateWithFlags(&streams[i], cudaStreamNonBlocking);
+        }
+
+        // copy memory Host to Device
+        bitblock_t ***bx = bxall->bx;
+        bitblock_t **ymat = yc->ymat;
+
+        size_t bx_offset = 0;
+        for(int j = 1; j <= p; j++){
+            int this_n_bcol = n_bcols[j];
+            for(int k = 0; k < this_n_bcol; k++){
+                cudaMemcpy(d_bx + bx_offset, bx[j][k], bytes, cudaMemcpyHostToDevice);
+                bx_offset += n_blocks;
+            }
+        }
+        size_t ymat_offset = 0;
+        for(int k = 0; k < J; k++){
+            cudaMemcpy(d_ymat + ymat_offset, ymat[k], bytes, cudaMemcpyHostToDevice);
+            ymat_offset += n_blocks;
+        }
+        cudaMemcpy(d_SetBitTable, SetBitTable, LOOKUP*sizeof(unsigned char), cudaMemcpyHostToDevice);
+
+        int t;
+        #pragma omp parallel for 
+        for(t = 0; t < ntrees; t++){
+            srand((unsigned) ((unsigned) seed)*t*1013904223L);
+            int i = 0;
+#ifdef _OPENMP
+            i = omp_get_thread_num();
+#endif
+            trees[t] = build_tree_hybrid(*model, bx, ymat, d_bx, n_blocks, block, grid, d_ymat, J, ps, max_depth, min_node_size, 
+                                        d_cur[i], d_z3[i], d_z4[i], d_count[i], d_ocount[i], d_SetBitTable, ocount[i], child_count[i], count[i], streams, i,
+                                        cur[i], useful_cur[i], z3[i], z4[i], uindex[i], ubthresh);
+        }
+
+        // free up the GPU specific resources
+        // free host
+        for(int i = 0; i < nthreads; i++){
+            free(ocount[i]);
+            cudaFree(d_cur[i]);
+            cudaFree(d_z3[i]);
+            cudaFree(d_z4[i]);
+            cudaFree(d_count[i]);
+            cudaFree(d_ocount[i]);
+            cudaStreamDestroy(streams[i]); 
+        }
+
+        free(ocount);
+        free(d_cur);
+        free(d_z3);
+        free(d_z4);
+        free(d_count);
+        free(d_ocount);
+        free(streams);
+        // free device
+        cudaFree(d_bx);
+        cudaFree(d_ymat);
+        cudaFree(d_SetBitTable);
+
+    } else {
+        // Do not involve GPU at all, use the CPU version
+        int t;
+        #pragma omp parallel for
+        for(t = 0; t < ntrees; t++){
+            int i = 0;
+#ifdef _OPENMP
+            i = omp_get_thread_num();
+#endif
+            srand((unsigned) ((unsigned) seed)*t*1013904223L);
+            trees[t] = build_tree(*model, bxall->bx, yc->ymat, n_blocks, J,  ps, max_depth, min_node_size, child_count[i], count[i], cur[i], useful_cur[i], z3[i], z4[i], uindex[i]);
+        }
+    }
+
+    (*model)->ntrees = ntrees;
+    (*model)->trees = trees;
+
+    // free up the resources allocated to CPU
+    for(int i = 0; i < nthreads; i++){
+        free(child_count[i]);
+        free(count[i]);
+        free(cur[i]);
+        free(useful_cur[i]);
+        free(z3[i]);
+        free(z4[i]);
+        free(uindex[i]);
+    }
+    free(child_count);
+    free(count);
+    free(cur);
+    free(useful_cur);
+    free(z3);
+    free(z4);
+    free(uindex);
+}
+
+
 
 void flatten_tree(dt_node_t *tree, dt_leaf_t **leaves, int J){
   if(tree){

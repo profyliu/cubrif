@@ -16,6 +16,7 @@ class cubrif:
     ntrees = 200
     nthreads = 4
     blocksize = 128
+    n_lb_GPU = 20480
     GPU = 0
     vote_method = 1
     seed = 2022
@@ -47,6 +48,8 @@ class cubrif:
             self.nthreads = param['nthreads']
         if "blocksize" in param:
             self.blocksize = param['blocksize']
+        if "n_lb_GPU" in param:
+            self.n_lb_GPU = param['n_lb_GPU']
         if "GPU" in param:
             self.GPU = param['GPU']
         if "vote_method" in param:
@@ -76,6 +79,8 @@ class cubrif:
             self.nthreads = param['nthreads']
         if "blocksize" in param:
             self.blocksize = param['blocksize']
+        if "n_lb_GPU" in param:
+            self.n_lb_GPU = param['n_lb_GPU']
         if "GPU" in param:
             self.GPU = param['GPU']
         if "vote_method" in param:
@@ -102,6 +107,7 @@ class cubrif:
                     "ntrees":self.ntrees,
                     "nthreads":self.nthreads,
                     "blocksize":self.blocksize,
+                    "n_lb_GPU":self.n_lb_GPU,
                     "GPU":self.GPU,
                     "vote_method":self.vote_method,
                     "seed":self.seed,

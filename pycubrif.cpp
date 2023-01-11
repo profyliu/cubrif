@@ -122,6 +122,7 @@ static PyObject *py_fit(PyObject *self, PyObject *args){
     int ntrees = 200;
     int nthreads = 2;
     int blocksize = 128;
+    int ubthresh = 640;
     int GPU = 0;  // 0: CPU; 1: CPU + GPU
     //int bagging_method = 0;
     //double bagging_proportion = 0.9;
@@ -161,6 +162,9 @@ static PyObject *py_fit(PyObject *self, PyObject *args){
         }
         if((this_value = PyDict_GetItemString(param, "GPU")) != NULL){
             GPU = (int) PyLong_AsLong(this_value);
+        }
+        if((this_value = PyDict_GetItemString(param, "n_lb_GPU")) != NULL){
+            ubthresh = (int) PyLong_AsLong(this_value) / sizeof(bitblock_t);
         }
         /*
         if((this_value = PyDict_GetItemString(param, "bagging_method")) != NULL){
@@ -257,10 +261,13 @@ static PyObject *py_fit(PyObject *self, PyObject *args){
     if(ps <= 0){
         ps = (int)(round(sqrt(model->p)));
     }
-    if(GPU)
+
+    if(GPU == 0)
+        build_forest(bx_train, yc_train, &model, ps, max_depth, min_node_size, ntrees, nthreads, seed);
+    else if(GPU == 1)
         build_forest_cuda(bx_train, yc_train, &model, ps, max_depth, min_node_size, ntrees, nthreads, blocksize, seed);
     else
-        build_forest(bx_train, yc_train, &model, ps, max_depth, min_node_size, ntrees, nthreads, seed);
+        build_forest_hybrid(bx_train, yc_train, &model, ps, max_depth, min_node_size, ntrees, nthreads, blocksize, ubthresh, seed);
     flatten_model(&model, nthreads);
     delete_bx(bx_train, model);
     delete_yc(yc_train);

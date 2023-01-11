@@ -22,6 +22,7 @@ int main(int argc, char* argv[]){
         puts("n_integer_cuts 31");
         puts("ntrees 1 (number of trees in the forest)");
         puts("blocksize 64 (thread block size for CUDA)");
+        puts("n_lb_GPU 20480 (n must be above this value to use GPU when GPU = 2 (hybrid mode)");
         puts("nthreads 1 (number of threads for OpenMP)");
         puts("GPU 0 (0 for CPU only, 1 for CPU + GPU)");
         exit(1);
@@ -49,6 +50,7 @@ int main(int argc, char* argv[]){
     int ntrees = 1;
     int nthreads = 1;
     int blocksize = 128;
+    int ubthresh = 640;  // for n = 32*64*10 = 20480 
     int seed = 2022;
 
     char linebuf[330];
@@ -82,6 +84,8 @@ int main(int argc, char* argv[]){
             strcpy(outfile, key2);
         } else if(!strcmp(key1, "GPU")){
             GPU = atoi(key2);
+        } else if(!strcmp(key1, "n_lb_GPU")){
+            ubthresh = atoi(key2) / sizeof(bitblock_t);
         } else if(!strcmp(key1, "max_integer_classes")){
             max_integer_classes = atoi(key2);
         } else if(!strcmp(key1, "n_integer_cuts")){
@@ -91,7 +95,7 @@ int main(int argc, char* argv[]){
         }
     }
 
-    printf("n = %d, p = %d, ntrees = %d, nthreads = %d, GPU = %d, blocksize %d\n", n, p, ntrees, nthreads, GPU, blocksize);
+    printf("n = %d, p = %d, ntrees = %d, nthreads = %d, GPU = %d, blocksize %d, n_lb_GPU %d\n", n, p, ntrees, nthreads, GPU, blocksize, ubthresh*sizeof(bitblock_t));
     printf("min_node_size = %d, max_depth = %d\n", min_node_size, max_depth);
     printf("n_numeric_cuts = %d, n_integer_cuts = %d, max_integer_classes = %d, seed = %d\n", n_numeric_cuts, n_integer_cuts, max_integer_classes, seed);
 
@@ -127,9 +131,12 @@ int main(int argc, char* argv[]){
     if(GPU == 0){
         printf("Using CPU to build forest ...\n");
         build_forest(bx_train, yc_train, &model, ps, max_depth, min_node_size, ntrees, nthreads, seed);
-    } else {
-        printf("Using CPU + GPU to build forest ...\n");
+    } else if(GPU == 1) {
+        printf("Using GPU to build forest ...\n");
         build_forest_cuda(bx_train, yc_train, &model, ps, max_depth, min_node_size, ntrees, nthreads, blocksize, seed);
+    } else {
+        printf("Using CPU + GPU hybrid mode to build forest ...\n");
+        build_forest_hybrid(bx_train, yc_train, &model, ps, max_depth, min_node_size, ntrees, nthreads, blocksize, ubthresh, seed);        
     }
     
     printf("Build forest %d threads. Time elapsed: %0.5f\n", nthreads, 1.0*(clock() - begtime)/CLOCKS_PER_SEC);

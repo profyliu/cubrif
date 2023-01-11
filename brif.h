@@ -193,6 +193,7 @@ __declspec(dllexport) void fill_name_addr_array(fnode_t *tree, char **name, int 
 __declspec(dllexport) void printRules(rf_model_t *model, int which_tree);
 __declspec(dllexport) data_frame_t *get_data(char inputfile[], rf_model_t **model, int n, int p, int X_only);
 __declspec(dllexport) void build_forest_cuda(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int max_depth, int min_node_size, int ntrees, int nthreads, int blocksize, int seed);
+__declspec(dllexport) void build_forest_hybrid(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int max_depth, int min_node_size, int ntrees, int nthreads, int blocksize, int ubthresh, int seed);
 #else
 extern "C" factor_t * create_factor(int n);
 extern "C" factor_t * copy_factor(int n, factor_t * fm);
