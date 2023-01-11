@@ -45,7 +45,7 @@ typedef int INT;
 // Declarations of this file
 
 typedef double numeric_t;
-typedef int64_t integer_t;
+typedef int integer_t;
 typedef unsigned int bitblock_t;
 
 typedef struct ycode {

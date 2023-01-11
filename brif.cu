@@ -47,9 +47,10 @@ ycode_t * copy_ycode(ycode_t * yc);
 int countSetBits(bitblock_t n);
 int count1s(bitblock_t *x, int n_blocks);
 void shuffle_array_first_ps(int *arr, int n, int ps);
-void find_best_split(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int min_node_size, dt_node_t * cur_node, bitblock_t *cur, int n_blocks, int *var_index, int actual_ps, bitblock_t *z3, bitblock_t *z4, int *count, int *child_count, int *candidate_index, int *split_var, int* split_bx);
+void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int J, int min_node_size, dt_node_t * cur_node, bitblock_t *cur, int n_blocks, int *var_index, int actual_ps, bitblock_t *z3, bitblock_t *z4, int *count, int *child_count, int *candidate_index, int *split_var, int* split_bx);
 void bootstrap_index_array(int n, int *array);
-dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, int max_depth, int min_node_size);
+dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int n_blocks, int J, int ps, int max_depth, int min_node_size,
+                      int *child_count, int *count, bitblock_t *cur, bitblock_t *z3, bitblock_t *z4);
 void predict_leaves(dt_leaf_t *leaves, bitblock_t ***bx, int **pred_tree, int J, int n_blocks);
 
 void flatten_tree(dt_node_t *tree, dt_leaf_t **leaves, int J);
@@ -1165,10 +1166,7 @@ void shuffle_array_first_ps(int *arr, int n, int ps){
 
 
 // find the best split_var and split_bx index; z4 is scratch pad; count, split_var, split_bx contain return values
-void find_best_split(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int min_node_size, dt_node_t * cur_node, bitblock_t *cur, int n_blocks, int *var_index, int actual_ps, bitblock_t *z3, bitblock_t *z4, int *count, int *child_count, int *candidate_index, int *split_var, int* split_bx){
-    bitblock_t **ymat = yc->ymat;
-    bitblock_t ***bx = bxall->bx;
-    int J = yc->nlevels;
+void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int J, int min_node_size, dt_node_t * cur_node, bitblock_t *cur, int n_blocks, int *var_index, int actual_ps, bitblock_t *z3, bitblock_t *z4, int *count, int *child_count, int *candidate_index, int *split_var, int* split_bx){
     int ps = actual_ps;
     int depth = cur_node->depth;
     int *path_var = cur_node->rulepath_var;
@@ -1348,22 +1346,14 @@ void bootstrap_index_array(int n, int *array){
     }
 }
 
-dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, int max_depth, int min_node_size){
+dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int n_blocks, int J, int ps, int max_depth, int min_node_size,
+                      int *child_count, int *count, bitblock_t *cur, bitblock_t *z3, bitblock_t *z4){
     // unpack inputs
-    bitblock_t ***bx = bxall->bx;  
     int *n_bcols = model->n_bcols;
     char *var_types = model->var_types;
-    int n_blocks = bxall->n_blocks;
     int p = model->p;
-    int J = yc->nlevels;
-    bitblock_t **ymat = yc->ymat;
-    
-    // prepare stuff
-    bitblock_t *z3 = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
-    bitblock_t *z4 = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
-    bitblock_t *cur = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
-    int *child_count = (int*)malloc(J*sizeof(int));
 
+    // prepare stuff
     dt_node_t* queue[MAXNODES]; 
     int head = 0; 
     int tail = 0;
@@ -1371,7 +1361,6 @@ dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, 
     dt_node_t* root = NULL;
     dt_node_t* cur_node = NULL;
     int split_var, split_bx;
-    int *count = (int*)malloc(J*sizeof(int));  // holds the count of classes in a node
     memset(count, 0, J*sizeof(int));
 
     int max_factor_nlevels = 0;
@@ -1396,11 +1385,13 @@ dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, 
         candidate_index = (int*)malloc(max_factor_nlevels*sizeof(int));
     }
     
-    // if actual_ps is too small (e.g., 1 or 2) nodes may become leaf prematurely
     int actual_ps = MIN(ps, actual_p);
+    /*
+    // if actual_ps is too small (e.g., 1 or 2) nodes may become leaf prematurely
     if(actual_p < 7 && actual_ps < actual_p / 2 + 1){
         actual_ps = actual_p / 2 + 1;
     }
+    */
 
     // construct root node
     cur_node = newNode(parent, J, 0);
@@ -1414,7 +1405,7 @@ dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, 
 
 
     shuffle_array_first_ps(var_index, actual_p, ps);
-    find_best_split(bxall, yc, model, min_node_size, cur_node, cur, n_blocks, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
+    find_best_split(model, bx, ymat, J, min_node_size, cur_node, cur, n_blocks, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
     cur_node->split_var = split_var; 
     cur_node->split_bx = split_bx;
     for(int k = 0; k < J; k++){
@@ -1457,7 +1448,7 @@ dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, 
 
         if(cur_node->depth < max_depth){
             shuffle_array_first_ps(var_index, actual_p, ps);
-            find_best_split(bxall, yc, model, min_node_size, cur_node, cur, n_blocks, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
+            find_best_split(model, bx, ymat, J, min_node_size, cur_node, cur, n_blocks, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
             cur_node->split_var = split_var; 
             cur_node->split_bx = split_bx;
             for(int k = 0; k < J; k++){
@@ -1499,7 +1490,7 @@ dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, 
 
         if(cur_node->depth < max_depth){
             shuffle_array_first_ps(var_index, actual_p, ps);
-            find_best_split(bxall, yc, model, min_node_size, cur_node, cur, n_blocks, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
+            find_best_split(model, bx, ymat, J, min_node_size, cur_node, cur, n_blocks, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
             cur_node->split_var = split_var; 
             cur_node->split_bx = split_bx;
             for(int k = 0; k < J; k++){
@@ -1524,12 +1515,7 @@ dt_node_t* build_tree(bx_info_t *bxall, ycode_t *yc, rf_model_t *model, int ps, 
 
     // clean up
     if(candidate_index != NULL) free(candidate_index);
-    free(cur);
-    free(z3);
-    free(z4);
-    free(child_count);
     free(var_index);
-    free(count);
     return(root);
 }
 
@@ -1599,6 +1585,35 @@ __global__ void ReduceCount(int *d_count, size_t n_blocks, int *d_ocount){
     }
 }
 
+// combine AndCount and CountReduce, to reduce the total number of kernel launches
+// the combined kernel is less efficient in terms of throughput but for most (not large enough) data cases, kernel launch overhead is dominant
+// so it is on average beneficial to launch fewer (though less efficient) kernels
+__global__ void AndCountReduce(bitblock_t *d_outvec, bitblock_t *d_invec, bitblock_t *d_inmat, 
+                        int *d_count, int*d_ocount, size_t mat_offset,
+                        size_t n_blocks, unsigned char *d_SetBitTable) {
+    // the index of the arrays to be operated by this thread
+    unsigned int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    // boundary check
+    if (idx >= n_blocks) return;
+    d_outvec[idx] = d_invec[idx] & d_inmat[mat_offset+idx];
+    d_count[idx] = d_SetBitTable[d_outvec[idx] & 0xffff];
+    d_count[idx] += d_SetBitTable[(d_outvec[idx] >> 16) & 0xffff];
+    // Now, do reduction
+    __syncthreads();  // make sure all threads in the same block has done the above step
+    // the ID of the thread in its thread block (0...blockDim.x)
+    unsigned int tid = threadIdx.x;
+    // convert global pointer to local pointer of this block
+    int *count = d_count + blockIdx.x * blockDim.x;
+    // in-place reduction in global memory
+    for(int stride = blockDim.x / 2; stride > 0; stride >>= 1){
+        if(tid < stride){
+            count[tid] += count[tid + stride];
+        }
+        __syncthreads();
+    }
+    // write out this block counts
+    if(tid == 0) d_ocount[blockIdx.x] = count[0];
+}
 
 __global__ void SimpleAnd(bitblock_t *d_outvec, bitblock_t *d_inmat, 
                         size_t mat_offset, size_t n_blocks) {
@@ -1647,16 +1662,20 @@ void find_best_split_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, 
 
     // get the count of classes
     for(int k = 0; k < J; k++){
+        
         // launch the AddCount kernel
         size_t ymat_offset = k*n_blocks;
+        /*
         AndCount<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_ymat, d_count, ymat_offset, n_blocks, d_SetBitTable);
         // launch the ReduceCount kernel
         ReduceCount<<<(grid.x + 7)/8, block, 0, streams[tid]>>> (d_count, n_blocks, d_ocount);
+        */
+        AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_ymat, d_count, d_ocount, ymat_offset, n_blocks, d_SetBitTable);
         // copy reduced result Device to Host
-        cudaMemcpyAsync(ocount, d_ocount, (grid.x + 7)/8*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
+        cudaMemcpyAsync(ocount, d_ocount, grid.x*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
         cudaStreamSynchronize(streams[tid]);
         count[k] = 0;
-        for(int i = 0; i < (int)(grid.x + 7)/8; i++) 
+        for(int i = 0; i < (int)grid.x; i++) 
             count[k] += ocount[i];
         nobs += count[k];
 
@@ -1720,14 +1739,17 @@ void find_best_split_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, 
             bx_offset_cols += split_index;
             bx_offset = bx_offset_cols * n_blocks;
             // launch the AddCount kernel
+            /*
             AndCount<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_bx, d_count, bx_offset, n_blocks, d_SetBitTable);
             // launch the ReduceCount kernel
             ReduceCount<<<(grid.x + 7)/8, block, 0, streams[tid]>>> (d_count, n_blocks, d_ocount);
+            */
+            AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_bx, d_count, d_ocount, bx_offset, n_blocks, d_SetBitTable);
             // copy reduced result Device to Host
-            cudaMemcpyAsync(ocount, d_ocount, (grid.x + 7)/8*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);    
+            cudaMemcpyAsync(ocount, d_ocount, grid.x*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);    
             cudaStreamSynchronize(streams[tid]);
             left_size = 0;        
-            for(int i = 0; i < (int)(grid.x + 7)/8; i++) 
+            for(int i = 0; i < (int)grid.x; i++) 
                 left_size += ocount[i];            
             /*
             for(int i = 0; i < n_blocks; i++){
@@ -1747,14 +1769,17 @@ void find_best_split_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, 
             for(int k = 0; k < J - 1; k++){
                 // launch the AddCount kernel
                 size_t ymat_offset = k*n_blocks;
+                /*
                 AndCount<<<grid, block, 0, streams[tid]>>>(d_z3, d_z4, d_ymat, d_count, ymat_offset, n_blocks, d_SetBitTable);
                 // launch the ReduceCount kernel
                 ReduceCount<<<(grid.x + 7)/8, block, 0, streams[tid]>>> (d_count, n_blocks, d_ocount);
+                */
+                AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_ymat, d_count, d_ocount, ymat_offset, n_blocks, d_SetBitTable);
                 // copy reduced result Device to Host
-                cudaMemcpyAsync(ocount, d_ocount, (grid.x + 7)/8*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
+                cudaMemcpyAsync(ocount, d_ocount, grid.x*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
                 cudaStreamSynchronize(streams[tid]);
                 child_count[k] = 0;
-                for(int i = 0; i < (int)(grid.x + 7)/8; i++)
+                for(int i = 0; i < (int)grid.x; i++)
                     child_count[k] += ocount[i];
 
                 /*
@@ -1821,14 +1846,17 @@ void find_best_split_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, 
             bx_offset_cols += split_index;
             bx_offset = bx_offset_cols * n_blocks;
             // launch the AddCount kernel
+            /*
             AndCount<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_bx, d_count, bx_offset, n_blocks, d_SetBitTable);
             // launch the ReduceCount kernel
             ReduceCount<<<(grid.x + 7)/8, block, 0, streams[tid]>>> (d_count, n_blocks, d_ocount);
+            */
+            AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_bx, d_count, d_ocount, bx_offset, n_blocks, d_SetBitTable);
             // copy reduced result Device to Host
-            cudaMemcpyAsync(ocount, d_ocount, (grid.x + 7)/8*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);    
+            cudaMemcpyAsync(ocount, d_ocount, grid.x*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);    
             cudaStreamSynchronize(streams[tid]);
             left_size = 0;        
-            for(int i = 0; i < (int)(grid.x + 7)/8; i++) 
+            for(int i = 0; i < (int)grid.x; i++) 
                 left_size += ocount[i];            
 
             /*
@@ -1849,14 +1877,17 @@ void find_best_split_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, 
             for(int k = 0; k < J - 1; k++){
                 // launch the AddCount kernel
                 size_t ymat_offset = k*n_blocks;
+                /*
                 AndCount<<<grid, block, 0, streams[tid]>>>(d_z3, d_z4, d_ymat, d_count, ymat_offset, n_blocks, d_SetBitTable);
                 // launch the ReduceCount kernel
                 ReduceCount<<<(grid.x + 7)/8, block, 0, streams[tid]>>> (d_count, n_blocks, d_ocount);
+                */
+                AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_ymat, d_count, d_ocount, ymat_offset, n_blocks, d_SetBitTable);
                 // copy reduced result Device to Host
-                cudaMemcpyAsync(ocount, d_ocount, (grid.x + 7)/8*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
+                cudaMemcpyAsync(ocount, d_ocount, grid.x*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
                 cudaStreamSynchronize(streams[tid]);
                 child_count[k] = 0;
-                for(int i = 0; i < (int)(grid.x + 7)/8; i++)
+                for(int i = 0; i < (int)grid.x; i++)
                     child_count[k] += ocount[i];
 
                 /*
@@ -1930,11 +1961,13 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t ***bx, bitblock_t *d_bx
         candidate_index = (int*)malloc(max_factor_nlevels*sizeof(int));
     }
     
-    // if actual_ps is too small (e.g., 1 or 2) nodes may become leaf prematurely
     int actual_ps = MIN(ps, actual_p);
+    /*
+    // if actual_ps is too small (e.g., 1 or 2) nodes may become leaf prematurely
     if(actual_p < 7 && actual_ps < actual_p / 2 + 1){
         actual_ps = actual_p / 2 + 1;
     }
+    */
 
     // construct root node
     cur_node = newNode(parent, J, 0);
@@ -1951,7 +1984,6 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t ***bx, bitblock_t *d_bx
                             d_count, d_ocount, d_SetBitTable,
                             ocount, child_count, count, 
                             candidate_index, &split_var, &split_bx, streams, tid);
-    //find_best_split(bxall, yc, model, min_node_size, split_search, cur_node, cur, n_blocks, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
     cur_node->split_var = split_var; 
     cur_node->split_bx = split_bx;
     for(int k = 0; k < J; k++){
@@ -2027,7 +2059,6 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t ***bx, bitblock_t *d_bx
 
         if(cur_node->depth < max_depth){
             shuffle_array_first_ps(var_index, actual_p, ps);
-            //find_best_split(bxall, yc, model, min_node_size, split_search, cur_node, cur, n_blocks, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
             find_best_split_cuda(model, d_bx, n_blocks, block, grid, d_ymat, 
                                     J, min_node_size, cur_node, var_index, actual_ps, 
                                     d_cur, d_z3, d_z4, 
@@ -2044,14 +2075,17 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t ***bx, bitblock_t *d_bx
             for(int k = 0; k < J; k++){
                 // launch the AddCount kernel
                 size_t ymat_offset = k*n_blocks;
+                /*
                 AndCount<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_ymat, d_count, ymat_offset, n_blocks, d_SetBitTable);
                 // launch the ReduceCount kernel
-                ReduceCount<<<(grid.x + 7)/8, block, 0, streams[tid]>>> (d_count, n_blocks, d_ocount);             
+                ReduceCount<<<(grid.x + 7)/8, block, 0, streams[tid]>>> (d_count, n_blocks, d_ocount);  
+                */
+                AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_ymat, d_count, d_ocount, ymat_offset, n_blocks, d_SetBitTable);           
                 // copy reduced result Device to Host
-                cudaMemcpyAsync(ocount, d_ocount, (grid.x + 7)/8*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
+                cudaMemcpyAsync(ocount, d_ocount, grid.x*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
                 cudaStreamSynchronize(streams[tid]);
                 cur_node->count[k] = 0;
-                for(int i = 0; i < (int)(grid.x + 7)/8; i++) 
+                for(int i = 0; i < (int)grid.x; i++) 
                     cur_node->count[k] += ocount[i];
 
                 /*
@@ -2128,7 +2162,6 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t ***bx, bitblock_t *d_bx
                                     d_count, d_ocount, d_SetBitTable,
                                     ocount, child_count, count, 
                                     candidate_index, &split_var, &split_bx, streams, tid);  
-            //find_best_split(bxall, yc, model, min_node_size, split_search, cur_node, cur, n_blocks, var_index, actual_ps, z3, z4, count, child_count, candidate_index, &split_var, &split_bx);
             cur_node->split_var = split_var; 
             cur_node->split_bx = split_bx;
             for(int k = 0; k < J; k++){
@@ -2139,14 +2172,17 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t ***bx, bitblock_t *d_bx
             for(int k = 0; k < J; k++){
                 // launch the AddCount kernel
                 size_t ymat_offset = k*n_blocks;
+                /*
                 AndCount<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_ymat, d_count, ymat_offset, n_blocks, d_SetBitTable);
                 // launch the ReduceCount kernel
                 ReduceCount<<<(grid.x + 7)/8, block, 0, streams[tid]>>> (d_count, n_blocks, d_ocount);
+                */
+                AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_ymat, d_count, d_ocount, ymat_offset, n_blocks, d_SetBitTable);
                 // copy reduced result Device to Host
-                cudaMemcpyAsync(ocount, d_ocount, (grid.x + 7)/8*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
+                cudaMemcpyAsync(ocount, d_ocount, grid.x*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
                 cudaStreamSynchronize(streams[tid]);
                 cur_node->count[k] = 0;
-                for(int i = 0; i < (int)(grid.x + 7)/8; i++) 
+                for(int i = 0; i < (int)grid.x; i++) 
                     cur_node->count[k] += ocount[i];
                 /*
                 for(int i=0; i < n_blocks; i++){
@@ -2191,7 +2227,7 @@ void predict_leaves(dt_leaf_t *leaves, bitblock_t ***bx, int **pred_tree, int J,
             }
             // set score for the block
             unsigned bit = 0;
-            for(unsigned k = 1 << (8*sizeof(bitblock_t) - 1); k > 0; k = k / 2){
+            for(bitblock_t k = 1 << (8*sizeof(bitblock_t) - 1); k > 0; k >>= 1){
                 if(test0 & k){
                     for(int j = 0; j < J; j++){
                         pred_tree[j][i*8*sizeof(bitblock_t)+bit] = leaves->count[j];
@@ -2580,6 +2616,8 @@ ycode_t * make_yc(data_frame_t *train, rf_model_t **model, int max_integer_class
 void build_forest(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int max_depth, int min_node_size, int ntrees, int nthreads, int seed){
 #ifdef _OPENMP
     omp_set_num_threads(nthreads);
+#else
+    nthreads = 1;
 #endif
     max_depth = MIN(MAXDEPTH, max_depth);
     ps = MIN(ps, (*model)->p);
@@ -2593,25 +2631,49 @@ void build_forest(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int
         fillSetBitTable(SetBitTable, LOOKUP);
         lookup_initialized = 1;
     }
-    // initialize RNG
-    /*
-    srand(seed);
-    int idle_runs = rand() % 100;
-    for(int i = 0; i < idle_runs; i++){
-        urand();
+
+    int J = yc->nlevels;
+    int n_blocks = bxall->n_blocks;
+    int **child_count = (int**)malloc(nthreads*sizeof(int*));
+    int **count = (int**)malloc(nthreads*sizeof(int*));
+    bitblock_t **cur = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
+    bitblock_t **z4 = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
+    bitblock_t **z3 = (bitblock_t**)malloc(nthreads*sizeof(bitblock_t*));
+    for(int i = 0; i < nthreads; i++){
+        child_count[i] = (int*)malloc(J*sizeof(int));
+        count[i] = (int*)malloc(J*sizeof(int)); 
+        cur[i] = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
+        z3[i] = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
+        z4[i] = (bitblock_t*)malloc(n_blocks*sizeof(bitblock_t));
     }
-    */
 
     dt_node_t **trees = (dt_node_t**)malloc(ntrees*sizeof(dt_node_t*));
     int t;
     #pragma omp parallel for
     for(t = 0; t < ntrees; t++){
+        int i = 0;
+#ifdef _OPENMP
+        i = omp_get_thread_num();
+#endif
         srand((unsigned) ((unsigned) seed)*t*1013904223L);
-        trees[t] = build_tree(bxall, yc, *model, ps, max_depth, min_node_size);
+        trees[t] = build_tree(*model, bxall->bx, yc->ymat, n_blocks, J,  ps, max_depth, min_node_size, child_count[i], count[i], cur[i], z3[i], z4[i]);
     }
 
     (*model)->ntrees = ntrees;
     (*model)->trees = trees;
+
+    for(int i = 0; i < nthreads; i++){
+        free(child_count[i]);
+        free(count[i]);
+        free(cur[i]);
+        free(z3[i]);
+        free(z4[i]);
+    }
+    free(child_count);
+    free(count);
+    free(cur);
+    free(z3);
+    free(z4);
 }
 
 
@@ -2619,6 +2681,8 @@ void build_forest(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int
 void build_forest_cuda(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps, int max_depth, int min_node_size, int ntrees, int nthreads, int blocksize, int seed){
 #ifdef _OPENMP
     omp_set_num_threads(nthreads);
+#else
+    nthreads = 1;
 #endif
     max_depth = MIN(MAXDEPTH, max_depth);
     ps = MIN(ps, (*model)->p);
@@ -2646,7 +2710,7 @@ void build_forest_cuda(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps
     int **child_count = (int**)malloc(nthreads*sizeof(int*));
     int **count = (int**)malloc(nthreads*sizeof(int*));
     for(int i = 0; i < nthreads; i++){
-        ocount[i] = (int*) malloc((grid.x + 7)/8*sizeof(int));
+        ocount[i] = (int*) malloc(grid.x*sizeof(int));
         child_count[i] = (int*)malloc(J*sizeof(int));
         count[i] = (int*)malloc(J*sizeof(int));  
     }
@@ -2676,7 +2740,7 @@ void build_forest_cuda(bx_info_t *bxall, ycode_t *yc, rf_model_t **model, int ps
         cudaMalloc((void**) &d_z4[i], bytes);
         cudaMalloc((void**) &d_z3[i], bytes);
         cudaMalloc((void**) &d_count[i], n_blocks*sizeof(int));
-        cudaMalloc((void**) &d_ocount[i], (grid.x + 7)/8*sizeof(int));        
+        cudaMalloc((void**) &d_ocount[i], grid.x*sizeof(int));        
     }
 
     cudaStream_t * streams = (cudaStream_t*)malloc(nthreads*sizeof(cudaStream_t));

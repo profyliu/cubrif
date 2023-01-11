@@ -173,13 +173,17 @@ class cubrif:
             pad = df.sample(n_discard_bits, axis = 0)
             df = pd.concat([df,pad])
             n = df.shape[0]
-            
+
+        # the following scrambling and stratified sampling steps are no longer needed
+        # because all samples are used in forest building
+        '''           
         df = df.sample(frac=1).reset_index(drop=True)  # shuffle rows
         df.sort_values(by=target_col_name, inplace=True, ignore_index = True)
         indxmat = np.reshape(np.arange(n), (32, int(n/32)))
         indxmat = indxmat.transpose()
         indxmat = np.reshape(indxmat, (n,1))
         df = df.reindex(indxmat.flatten())    
+        ''' 
 
         self._model = cubrifc.fit(colnames, vartypes, 
                   num_ind, df.iloc[:,num_ind].to_numpy(na_value = self.na_numeric),
