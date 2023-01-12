@@ -1,4 +1,17 @@
 #include "brif.h"
+#if defined(__linux__) || defined(__APPLE__)
+#include <sys/time.h>
+double cpuSecond(){
+    struct timeval tp;
+    gettimeofday(&tp, NULL);
+    return((double)tp.tv_sec + (double)tp.tv_usec*1.e-6);
+}
+#else
+double cpuSecond(){
+    return((double)clock()/CLOCKS_PER_SEC);
+}
+#endif
+
 
 int main(int argc, char* argv[]){
     
@@ -105,9 +118,9 @@ int main(int argc, char* argv[]){
         exit(1);
     }
 
-    clock_t begtime;
+    double begtime;
     rf_model_t *model = NULL;
-    begtime = clock();
+    begtime = cpuSecond();
     //data_frame_t *train_df = get_data("tmp_brif_traindata.txt", &model, 416,7, 0);
     printf("Reading file %s\n", trainfile);
     data_frame_t *train_df = get_data(trainfile, &model, n, p, 0);
@@ -116,18 +129,18 @@ int main(int argc, char* argv[]){
         if(model != NULL) delete_model(model);
         exit(1);
     }
-    printf("Finished reading data. Time elapsed: %0.5f\n", 1.0*(clock() - begtime)/CLOCKS_PER_SEC);
+    printf("Finished reading data. Time elapsed: %0.5f\n",cpuSecond() - begtime);
 
     int ps = (int)(round(sqrt(model->p)));
 
     
-    begtime = clock();
+    begtime = cpuSecond();
     make_cuts(train_df, &model, n_numeric_cuts, n_integer_cuts);   
     bx_info_t *bx_train = make_bx(train_df, &model, nthreads);
     ycode_t *yc_train = make_yc(train_df, &model, max_integer_classes, nthreads);
     delete_data(train_df); 
-    printf("Finished making bx and yc using %d threads. Time elapsed: %0.5f\n", nthreads, 1.0*(clock() - begtime)/CLOCKS_PER_SEC);
-    begtime = clock();
+    printf("Finished making bx and yc using %d threads. Time elapsed: %0.5f\n", nthreads, cpuSecond() - begtime);
+    begtime = cpuSecond();
     if(GPU == 0){
         printf("Using CPU to build forest ...\n");
         build_forest(bx_train, yc_train, &model, ps, max_depth, min_node_size, ntrees, nthreads, seed);
@@ -139,7 +152,7 @@ int main(int argc, char* argv[]){
         build_forest_hybrid(bx_train, yc_train, &model, ps, max_depth, min_node_size, ntrees, nthreads, blocksize, ubthresh, seed);        
     }
     
-    printf("Build forest %d threads. Time elapsed: %0.5f\n", nthreads, 1.0*(clock() - begtime)/CLOCKS_PER_SEC);
+    printf("Build forest %d threads. Time elapsed: %0.5f\n", nthreads, cpuSecond() - begtime);
 
     delete_bx(bx_train, model);
     delete_yc(yc_train);
