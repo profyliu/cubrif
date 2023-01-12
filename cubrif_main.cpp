@@ -28,6 +28,7 @@ int main(int argc, char* argv[]){
         puts("outfile   | Optional | filename for where to write scoring output, if missing, write on stdout");
         puts("valid_n   | Optional | number of rows in test data (required if validfile is given)");
         puts("Other parameters and their default values (and notes):");
+        puts("valid_X_only 0 (0 means valid data has y as first column; 1 means X matrix only)");
         puts("min_node_size 1");
         puts("max_depth 20");
         puts("max_integer_classes 10");
@@ -55,6 +56,7 @@ int main(int argc, char* argv[]){
     char validfile[200] = {'\0'};  // validation data file name
     char outfile[200] = {'\0'};  // validation data file name
     int valid_n = 0;  // number of rows in validation file
+    int valid_X_only = 0; 
     int min_node_size = 1;  // minimum node size
     int max_depth = 20; 
     int max_integer_classes = 10;
@@ -79,6 +81,8 @@ int main(int argc, char* argv[]){
             strcpy(trainfile, key2);
         } else if(!strcmp(key1, "valid_n")){
             valid_n = atoi(key2);
+        } else if(!strcmp(key1, "valid_X_only")){
+            valid_X_only = atoi(key2);
         } else if(!strcmp(key1, "validfile")){
             strcpy(validfile, key2);
         } else if(!strcmp(key1, "min_node_size")){
@@ -164,7 +168,7 @@ int main(int argc, char* argv[]){
 
     //data_frame_t *test_df = get_data("tmp_brif_testdata.txt", &model, 9,7, 1);
     printf("Reading file %s\n", validfile); 
-    data_frame_t *test_df = get_data(validfile, &model, valid_n, p, 0);
+    data_frame_t *test_df = get_data(validfile, &model, valid_n, p, valid_X_only);
     if(test_df == NULL){
         printf("Error reading test data.\n");
         if(model != NULL) delete_model(model);
@@ -177,29 +181,72 @@ int main(int argc, char* argv[]){
 
     delete_data(test_df);
 
-    double **score = (double **)malloc(model->yc->nlevels*sizeof(double*));
-    for(int k = 0; k < model->yc->nlevels; k++){
-        score[k] = (double*)malloc(test_n*sizeof(double));
-        memset(score[k], 0, test_n*sizeof(double));
-    }
-            
-    predict(model, bx_test, score, 1, nthreads);
-    delete_bx(bx_test, model);
-
     FILE *outfileptr;
     if(strlen(outfile) == 0){
         outfileptr = stdout;
     } else {
         outfileptr = fopen(outfile,"w");
     }
+
+    // prepare score matrix
+    double **score = (double **)malloc(model->yc->nlevels*sizeof(double*));
+    for(int k = 0; k < model->yc->nlevels; k++){
+        score[k] = (double*)malloc(test_n*sizeof(double));
+        memset(score[k], 0, test_n*sizeof(double));
+    }
+    predict(model, bx_test, score, 1, nthreads);
+    delete_bx(bx_test, model);            
     
-    for(int i = 0; i < test_n; i++){
+    // Write header line
+    if(model->yc->type == CLASSIFICATION && model->yc->yvalues_num == NULL){
         for(int k = 0; k < model->yc->nlevels; k++){
-            fprintf(outfileptr, "%f ", score[k][i]);
+            char var_name[MAX_VAR_NAME_LEN];
+            if(model->yc->yvalues_int != NULL){
+                if(model->var_types[0] == 'f'){  // if the target variable is a factor
+                    int this_level_index = model->yc->yvalues_int[k] - model->yc->start_index;
+                    fprintf(outfileptr, "%s ", model->yc->level_names[this_level_index]);
+                } else {
+                    fprintf(outfileptr, "%d ", model->yc->yvalues_int[k]);
+                }
+            }
         }
         fprintf(outfileptr, "\n");
+    } else if(model->yc->type == REGRESSION || (model->yc->type == CLASSIFICATION && model->yc->yvalues_num != NULL)){
+        fprintf(outfileptr, "pred\n"); 
     }
-    if(strlen(outfile) != 0) fclose(outfileptr);
+
+    // Write each value line
+    double pred;
+    if(model->yc->type == REGRESSION){
+        for(int i = 0; i < test_n; i++){
+            pred = 0;
+            for(int k = 0; k < model->yc->nlevels; k++){
+                pred += model->yc->yavg[k]*score[k][i];
+            }
+            fprintf(outfileptr, "%f \n", pred);
+        }
+    } else if(model->yc->type == CLASSIFICATION && model->yc->yvalues_num != NULL){
+        for(int i = 0; i < test_n; i++){
+            pred = 0;
+            for(int k = 0; k < model->yc->nlevels; k++){
+                pred += model->yc->yvalues_num[k]*score[k][i];
+            }
+            fprintf(outfileptr, "%f \n", pred);
+        }  
+    } else {
+        for(int i = 0; i < test_n; i++){
+            for(int k = 0; k < model->yc->nlevels; k++){
+                fprintf(outfileptr, "%f ", score[k][i]);
+            }
+            fprintf(outfileptr, "\n");
+        }
+    }
+
+
+    if(strlen(outfile) != 0){
+        printf("Prediction results written to %s\n", outfile);
+        fclose(outfileptr);
+    }
 
     for(int k = 0; k < model->yc->nlevels; k++){
         free(score[k]);
