@@ -12,6 +12,6 @@ endif()
 
 
 cuda_add_library(cubrif SHARED brif.cu)
-cuda_add_executable(cubrif_main cubrif_main.cpp)
-target_link_libraries(cubrif_main cubrif)
+cuda_add_executable(cubrif_main brif.cu cubrif_main.cpp)
+
 

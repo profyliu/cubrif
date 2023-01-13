@@ -1,3 +1,5 @@
 include brif.h
 include cubrif_main.cpp
 include cubrif.lib
+include libcubrif.so
+include cubrif.dylib

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cubrif"
-description = "Build decision trees and random forests for classification and regression."
+description = "Build random forests using CUDA GPU."
 readme = "README.md"
 requires-python = ">=3.5"
 keywords = ["random forest", "classification", "regression", "prediction"]
@@ -18,7 +18,10 @@ license = {text = "GPL3"}
 classifiers = [
     "Topic :: Scientific/Engineering :: Information Analysis",
     "Programming Language :: C",
-    "Programming Language :: Python :: 3"
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Environment :: GPU :: NVIDIA CUDA",
+    "Environment :: GPU :: NVIDIA CUDA :: 12"
 ]
 dependencies = [
     "numpy",
