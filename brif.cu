@@ -66,7 +66,6 @@ dt_node_t* build_tree_hybrid(rf_model_t *model, bitblock_t ***bx, bitblock_t **y
                             int* d_count, int* d_ocount, unsigned char *d_SetBitTable,
                             int* ocount, int* child_count, int *count, cudaStream_t * streams, int tid,
                             bitblock_t *cur, bitblock_t *useful_cur, bitblock_t *z3, bitblock_t *z4, int *uindex, int ubthresh);
-void predict_leaves(dt_leaf_t *leaves, bitblock_t ***bx, int **pred_tree, int J, int n_blocks);
 
 void flatten_tree(dt_node_t *tree, dt_leaf_t **leaves, int J);
 void printTree(dt_node_t * tree, unsigned indent, int J);
@@ -2479,38 +2478,6 @@ dt_node_t* build_tree_hybrid(rf_model_t *model, bitblock_t ***bx, bitblock_t **y
 }
 
 
-void predict_leaves(dt_leaf_t *leaves, bitblock_t ***bx, int **pred_tree, int J, int n_blocks){
-    if(leaves){
-        int i;
-        #pragma omp parallel for 
-        for(i = 0; i < n_blocks; i++){
-            bitblock_t test0 = MAXBITBLOCK_VALUE;
-            for(int d = 0; d < leaves->depth; d++){
-                int this_var = leaves->rulepath_var[d];
-                int this_bx = leaves->rulepath_bx[d];
-                if(this_var > 0){
-                    test0 &= bx[this_var][this_bx][i];
-                } else if(this_var < 0){
-                    test0 &= ~bx[-this_var][this_bx][i];
-                } else {
-                    //printf("Impossible\n");
-                }
-            }
-            // set score for the block
-            unsigned bit = 0;
-            for(bitblock_t k = 1 << (8*sizeof(bitblock_t) - 1); k > 0; k >>= 1){
-                if(test0 & k){
-                    for(int j = 0; j < J; j++){
-                        pred_tree[j][i*8*sizeof(bitblock_t)+bit] = leaves->count[j];
-                    }
-                }
-                bit++;
-            }
-        }
-        predict_leaves(leaves->next, bx, pred_tree, J, n_blocks);
-    }
-}
-
 
 void predict(rf_model_t *model, bx_info_t * bx_new, double **pred, int vote_method, int nthreads){    
     if(model == NULL || model->ntrees == 0) return;
@@ -2531,7 +2498,36 @@ void predict(rf_model_t *model, bx_info_t * bx_new, double **pred, int vote_meth
     }
 
     for(int t = 0; t < model->ntrees; t++){
-        predict_leaves(model->tree_leaves[t], bx, pred_tree, J, n_blocks);
+        dt_leaf_t *leaves = model->tree_leaves[t];
+        while(leaves){
+            int i;
+            #pragma omp parallel for 
+            for(i = 0; i < n_blocks; i++){
+                bitblock_t test0 = MAXBITBLOCK_VALUE;
+                for(int d = 0; d < leaves->depth; d++){
+                    int this_var = leaves->rulepath_var[d];
+                    int this_bx = leaves->rulepath_bx[d];
+                    if(this_var > 0){
+                        test0 &= bx[this_var][this_bx][i];
+                    } else if(this_var < 0){
+                        test0 &= ~bx[-this_var][this_bx][i];
+                    } else {
+                        //printf("Impossible\n");
+                    }
+                }
+                // set score for the block
+                unsigned bit = 0;
+                for(bitblock_t k = 1 << (8*sizeof(bitblock_t) - 1); k > 0; k >>= 1){
+                    if(test0 & k){
+                        for(int j = 0; j < J; j++){
+                            pred_tree[j][i*8*sizeof(bitblock_t)+bit] = leaves->count[j];
+                        }
+                    }
+                    bit++;
+                }
+            }
+            leaves = leaves->next;
+        } 
 
         if(vote_method == 0){
             int i;
