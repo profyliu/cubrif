@@ -33,7 +33,7 @@ typedef int INT;
 #define LEFT 0
 #define RIGHT 1
 #define MAXDEPTH 40
-#define MAXNODES 1000
+#define MAXNODES 5000
 #define MAXBITBLOCK_VALUE UINT_MAX
 #define INTEGER_T_MIN INT_MIN
 #define INTEGER_T_MAX INT_MAX

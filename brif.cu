@@ -1369,7 +1369,9 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
     int p = model->p;
 
     // prepare stuff
-    dt_node_t* queue[MAXNODES]; 
+    //dt_node_t* queue[MAXNODES]; 
+    int cur_MAXNODES = MAXNODES;
+    dt_node_t **queue = (dt_node_t**)malloc(cur_MAXNODES*sizeof(dt_node_t*));
     int head = 0; 
     int tail = 0;
     dt_node_t* parent = NULL;
@@ -1433,14 +1435,18 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
 
     // if queue is not empty, process the node at queue head
     while(tail > head){
-        // if the buffer is full, shift to make room
-        if(tail >= MAXNODES - 2){
-            for(int i = 0; i < tail - head; i++){
-                queue[i] = queue[head+i];
+        // if the buffer is full, allocate more space or shift to make room
+        if(tail >= cur_MAXNODES - 2){
+            if(head > cur_MAXNODES / 5){  // move if there is at least 20% head room
+                for(int i = 0; i < tail - head; i++){
+                    queue[i] = queue[head+i];
+                }
+                tail = tail - head;
+                head = 0;
+            } else {
+                queue = (dt_node_t**)realloc(queue, (cur_MAXNODES + MAXNODES)*sizeof(dt_node_t*));
+                cur_MAXNODES = cur_MAXNODES + MAXNODES;
             }
-
-            tail = tail - head;
-            head = 0;
         }
         parent = queue[head++];
         // create its left child
@@ -1545,6 +1551,7 @@ dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, in
     // clean up
     if(candidate_index != NULL) free(candidate_index);
     free(var_index);
+    free(queue);
     return(root);
 }
 
@@ -1959,7 +1966,9 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks,
     int p = model->p;
 
 
-    dt_node_t* queue[MAXNODES]; 
+    //dt_node_t* queue[MAXNODES]; 
+    int cur_MAXNODES = MAXNODES;
+    dt_node_t **queue = (dt_node_t**)malloc(cur_MAXNODES*sizeof(dt_node_t*));
     int head = 0; 
     int tail = 0;
     dt_node_t* parent = NULL;
@@ -2025,14 +2034,18 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks,
 
     // if queue is not empty, process the node at queue head
     while(tail > head){
-        // if the buffer is full, shift to make room
-        if(tail >= MAXNODES - 2){
-            for(int i = 0; i < tail - head; i++){
-                queue[i] = queue[head+i];
+        // if the buffer is full, allocate more space or shift to make room
+        if(tail >= cur_MAXNODES - 2){
+            if(head > cur_MAXNODES / 5){  // move if there is at least 20% head room
+                for(int i = 0; i < tail - head; i++){
+                    queue[i] = queue[head+i];
+                }
+                tail = tail - head;
+                head = 0;
+            } else {
+                queue = (dt_node_t**)realloc(queue, (cur_MAXNODES + MAXNODES)*sizeof(dt_node_t*));
+                cur_MAXNODES = cur_MAXNODES + MAXNODES;
             }
-
-            tail = tail - head;
-            head = 0;
         }
         parent = queue[head++];
         // create its left child
@@ -2193,6 +2206,7 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks,
     if(candidate_index != NULL) free(candidate_index);
     //free(cur);
     free(var_index);
+    free(queue);
     return(root);
 }
 
@@ -2211,7 +2225,9 @@ dt_node_t* build_tree_hybrid(rf_model_t *model, bitblock_t ***bx, bitblock_t **y
     int p = model->p;
 
 
-    dt_node_t* queue[MAXNODES]; 
+    //dt_node_t* queue[MAXNODES]; 
+    int cur_MAXNODES = MAXNODES;
+    dt_node_t **queue = (dt_node_t**)malloc(cur_MAXNODES*sizeof(dt_node_t*));
     int head = 0; 
     int tail = 0;
     dt_node_t* parent = NULL;
@@ -2289,14 +2305,18 @@ dt_node_t* build_tree_hybrid(rf_model_t *model, bitblock_t ***bx, bitblock_t **y
 
     // if queue is not empty, process the node at queue head
     while(tail > head){
-        // if the buffer is full, shift to make room
-        if(tail >= MAXNODES - 2){
-            for(int i = 0; i < tail - head; i++){
-                queue[i] = queue[head+i];
+        // if the buffer is full, allocate more space or shift to make room
+        if(tail >= cur_MAXNODES - 2){
+            if(head > cur_MAXNODES / 5){  // move if there is at least 20% head room
+                for(int i = 0; i < tail - head; i++){
+                    queue[i] = queue[head+i];
+                }
+                tail = tail - head;
+                head = 0;
+            } else {
+                queue = (dt_node_t**)realloc(queue, (cur_MAXNODES + MAXNODES)*sizeof(dt_node_t*));
+                cur_MAXNODES = cur_MAXNODES + MAXNODES;
             }
-
-            tail = tail - head;
-            head = 0;
         }
         parent = queue[head++];
         // create its left child
@@ -2454,6 +2474,7 @@ dt_node_t* build_tree_hybrid(rf_model_t *model, bitblock_t ***bx, bitblock_t **y
     if(candidate_index != NULL) free(candidate_index);
     //free(cur);
     free(var_index);
+    free(queue);
     return(root);
 }
 

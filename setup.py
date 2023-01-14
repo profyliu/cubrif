@@ -3,7 +3,7 @@ from setuptools.command.build_ext import build_ext
 
 
 setup(name='cubrif',
-        version="1.4.1",
+        version="1.4.2",
         description = "Build random forests using CUDA GPU.",
         author = 'Yanchao Liu',
         author_email = 'yanchaoliu@wayne.edu',
