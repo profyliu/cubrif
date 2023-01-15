@@ -1809,7 +1809,7 @@ void find_best_split_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, 
                 // launch the ReduceCount kernel
                 ReduceCount<<<(grid.x + 7)/8, block, 0, streams[tid]>>> (d_count, n_blocks, d_ocount);
                 */
-                AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_ymat, d_count, d_ocount, ymat_offset, n_blocks, d_SetBitTable);
+                AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z3, d_z4, d_ymat, d_count, d_ocount, ymat_offset, n_blocks, d_SetBitTable);
                 // copy reduced result Device to Host
                 cudaMemcpyAsync(ocount, d_ocount, grid.x*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
                 cudaStreamSynchronize(streams[tid]);
@@ -1917,7 +1917,7 @@ void find_best_split_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, 
                 // launch the ReduceCount kernel
                 ReduceCount<<<(grid.x + 7)/8, block, 0, streams[tid]>>> (d_count, n_blocks, d_ocount);
                 */
-                AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z4, d_cur, d_ymat, d_count, d_ocount, ymat_offset, n_blocks, d_SetBitTable);
+                AndCountReduce<<<grid, block, 0, streams[tid]>>>(d_z3, d_z4, d_ymat, d_count, d_ocount, ymat_offset, n_blocks, d_SetBitTable);
                 // copy reduced result Device to Host
                 cudaMemcpyAsync(ocount, d_ocount, grid.x*sizeof(int), cudaMemcpyDeviceToHost, streams[tid]);
                 cudaStreamSynchronize(streams[tid]);
@@ -2013,7 +2013,6 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks,
     
     cudaMemsetAsync(d_cur, 0xff, n_blocks*sizeof(bitblock_t), streams[tid]);
 
-
     shuffle_array_first_ps(var_index, actual_p, ps);
     find_best_split_cuda(model, d_bx, n_blocks, block, grid, d_ymat, 
                             J, min_node_size, cur_node, var_index, actual_ps, 
@@ -2052,6 +2051,7 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks,
         parent->left = cur_node;
 
         cudaMemsetAsync(d_cur, 0xff, n_blocks*sizeof(bitblock_t), streams[tid]);
+
         for(int d = 0; d < cur_node->depth; d++){
             int this_var = cur_node->rulepath_var[d];
             int this_bx = cur_node->rulepath_bx[d];
@@ -2129,6 +2129,7 @@ dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks,
         parent->right = cur_node;
 
         cudaMemsetAsync(d_cur, 0xff, n_blocks*sizeof(bitblock_t), streams[tid]);
+
         for(int d = 0; d < cur_node->depth; d++){
             int this_var = cur_node->rulepath_var[d];
             int this_bx = cur_node->rulepath_bx[d];
