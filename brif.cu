@@ -1152,11 +1152,36 @@ int countSetBits(bitblock_t n){
 // assuming bitblock_t is 4 bytes
 int count1s(bitblock_t *x, int n_blocks){
     int cnt = 0;
+    // Unroll loops
+    int i = 0;
+    for(; i < n_blocks - 16; i += 16){
+        cnt += (int) (SetBitTable[x[i] & 0xffff] + SetBitTable[(x[i] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+1] & 0xffff] + SetBitTable[(x[i+1] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+2] & 0xffff] + SetBitTable[(x[i+2] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+3] & 0xffff] + SetBitTable[(x[i+3] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+4] & 0xffff] + SetBitTable[(x[i+4] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+5] & 0xffff] + SetBitTable[(x[i+5] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+6] & 0xffff] + SetBitTable[(x[i+6] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+7] & 0xffff] + SetBitTable[(x[i+7] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+8] & 0xffff] + SetBitTable[(x[i+8] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+9] & 0xffff] + SetBitTable[(x[i+9] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+10] & 0xffff] + SetBitTable[(x[i+10] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+11] & 0xffff] + SetBitTable[(x[i+11] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+12] & 0xffff] + SetBitTable[(x[i+12] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+13] & 0xffff] + SetBitTable[(x[i+13] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+14] & 0xffff] + SetBitTable[(x[i+14] >> 16) & 0xffff]);
+        cnt += (int) (SetBitTable[x[i+15] & 0xffff] + SetBitTable[(x[i+15] >> 16) & 0xffff]);
+    }
+    for(; i < n_blocks; i++){
+        cnt += (int) (SetBitTable[x[i] & 0xffff] + SetBitTable[(x[i] >> 16) & 0xffff]);
+    }
+    /*
     for(int i = 0; i < n_blocks; i++){
         //cnt += countSetBits(x[i]);
         //cnt += (int) (SetBitTable[x[i] & 0xff] + SetBitTable[(x[i] >> 8) & 0xff] + SetBitTable[(x[i] >> 16) & 0xff] + SetBitTable[(x[i] >> 24) & 0xff]);
         cnt += (int) (SetBitTable[x[i] & 0xffff] + SetBitTable[(x[i] >> 16) & 0xffff]);
     }
+    */
     return(cnt);
 }
 
@@ -1243,9 +1268,35 @@ void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int
                 continue;  // this var cannot be used
             }
             split_index = lower_index + rand() % (upper_index - lower_index);  // take a random point
+
+            // Unroll loops
+            int i = 0;
+            for(; i < n_blocks - 16; i += 16){
+                z4[i] = cur[i] & bx[j][split_index][uindex[i]];
+                z4[i+1] = cur[i+1] & bx[j][split_index][uindex[i+1]];
+                z4[i+2] = cur[i+2] & bx[j][split_index][uindex[i+2]];
+                z4[i+3] = cur[i+3] & bx[j][split_index][uindex[i+3]];
+                z4[i+4] = cur[i+4] & bx[j][split_index][uindex[i+4]];
+                z4[i+5] = cur[i+5] & bx[j][split_index][uindex[i+5]];
+                z4[i+6] = cur[i+6] & bx[j][split_index][uindex[i+6]];
+                z4[i+7] = cur[i+7] & bx[j][split_index][uindex[i+7]];
+                z4[i+8] = cur[i+8] & bx[j][split_index][uindex[i+8]];
+                z4[i+9] = cur[i+9] & bx[j][split_index][uindex[i+9]];
+                z4[i+10] = cur[i+10] & bx[j][split_index][uindex[i+10]];
+                z4[i+11] = cur[i+11] & bx[j][split_index][uindex[i+11]];
+                z4[i+12] = cur[i+12] & bx[j][split_index][uindex[i+12]];
+                z4[i+13] = cur[i+13] & bx[j][split_index][uindex[i+13]];
+                z4[i+14] = cur[i+14] & bx[j][split_index][uindex[i+14]];
+                z4[i+15] = cur[i+15] & bx[j][split_index][uindex[i+15]];
+            }
+            for(; i < n_blocks; i++){
+                z4[i] = cur[i] & bx[j][split_index][uindex[i]];
+            }
+            /*
             for(int i = 0; i < n_blocks; i++){
                 z4[i] = cur[i] & bx[j][split_index][uindex[i]];
             }
+            */
             left_size = count1s(z4, n_blocks);
             right_size = nobs - left_size;
             if(left_size < min_node_size || right_size < min_node_size){
@@ -1256,9 +1307,36 @@ void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int
             // calculate would-be counts for each class in the left node
             cum_child_count = 0;
             for(int k = 0; k < J - 1; k++){
+
+                // Unroll loops
+                int i = 0;
+                for(; i < n_blocks - 16; i += 16){
+                    z3[i] = ymat[k][uindex[i]] & z4[i];
+                    z3[i+1] = ymat[k][uindex[i+1]] & z4[i+1];
+                    z3[i+2] = ymat[k][uindex[i+2]] & z4[i+2];
+                    z3[i+3] = ymat[k][uindex[i+3]] & z4[i+3];
+                    z3[i+4] = ymat[k][uindex[i+4]] & z4[i+4];
+                    z3[i+5] = ymat[k][uindex[i+5]] & z4[i+5];
+                    z3[i+6] = ymat[k][uindex[i+6]] & z4[i+6];
+                    z3[i+7] = ymat[k][uindex[i+7]] & z4[i+7];
+                    z3[i+8] = ymat[k][uindex[i+8]] & z4[i+8];
+                    z3[i+9] = ymat[k][uindex[i+9]] & z4[i+9];
+                    z3[i+10] = ymat[k][uindex[i+10]] & z4[i+10];
+                    z3[i+11] = ymat[k][uindex[i+11]] & z4[i+11];
+                    z3[i+12] = ymat[k][uindex[i+12]] & z4[i+12];
+                    z3[i+13] = ymat[k][uindex[i+13]] & z4[i+13];
+                    z3[i+14] = ymat[k][uindex[i+14]] & z4[i+14];
+                    z3[i+15] = ymat[k][uindex[i+15]] & z4[i+15];
+
+                }
+                for(; i < n_blocks; i++){
+                    z3[i] = ymat[k][uindex[i]] & z4[i];
+                }
+                /*
                 for(int i=0; i < n_blocks; i++){
                     z3[i] = ymat[k][uindex[i]] & z4[i];
                 }
+                */
                 child_count[k] = count1s(z3, n_blocks);
                 cum_child_count += child_count[k];
                 tmp = ((double)child_count[k])/left_size;
@@ -1310,9 +1388,34 @@ void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int
             // randomly sample an available index
             split_index = candidate_index[n_tabu_levels + rand() % (nb - n_tabu_levels)];
             
+            // Unroll loops
+            int i = 0;
+            for(; i < n_blocks - 16; i += 16){
+                z4[i] = cur[i] & bx[j][split_index][uindex[i]];
+                z4[i+1] = cur[i+1] & bx[j][split_index][uindex[i+1]];
+                z4[i+2] = cur[i+2] & bx[j][split_index][uindex[i+2]];
+                z4[i+3] = cur[i+3] & bx[j][split_index][uindex[i+3]];
+                z4[i+4] = cur[i+4] & bx[j][split_index][uindex[i+4]];
+                z4[i+5] = cur[i+5] & bx[j][split_index][uindex[i+5]];
+                z4[i+6] = cur[i+6] & bx[j][split_index][uindex[i+6]];
+                z4[i+7] = cur[i+7] & bx[j][split_index][uindex[i+7]];
+                z4[i+8] = cur[i+8] & bx[j][split_index][uindex[i+8]];
+                z4[i+9] = cur[i+9] & bx[j][split_index][uindex[i+9]];
+                z4[i+10] = cur[i+10] & bx[j][split_index][uindex[i+10]];
+                z4[i+11] = cur[i+11] & bx[j][split_index][uindex[i+11]];
+                z4[i+12] = cur[i+12] & bx[j][split_index][uindex[i+12]];
+                z4[i+13] = cur[i+13] & bx[j][split_index][uindex[i+13]];
+                z4[i+14] = cur[i+14] & bx[j][split_index][uindex[i+14]];
+                z4[i+15] = cur[i+15] & bx[j][split_index][uindex[i+15]];
+            }
+            for(; i < n_blocks; i++){
+                z4[i] = cur[i] & bx[j][split_index][uindex[i]];
+            }
+            /*
             for(int i = 0; i < n_blocks; i++){
                 z4[i] = cur[i] & bx[j][split_index][uindex[i]];
             }
+            */
             left_size = count1s(z4, n_blocks);
             right_size = nobs - left_size;
             if(left_size < min_node_size || right_size < min_node_size){
@@ -1323,9 +1426,35 @@ void find_best_split(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int
             // calculate would-be counts for each class in the left node
             cum_child_count = 0;
             for(int k = 0; k < J - 1; k++){
+                // Unroll loops
+                int i = 0;
+                for(; i < n_blocks - 16; i += 16){
+                    z3[i] = ymat[k][uindex[i]] & z4[i];
+                    z3[i+1] = ymat[k][uindex[i+1]] & z4[i+1];
+                    z3[i+2] = ymat[k][uindex[i+2]] & z4[i+2];
+                    z3[i+3] = ymat[k][uindex[i+3]] & z4[i+3];
+                    z3[i+4] = ymat[k][uindex[i+4]] & z4[i+4];
+                    z3[i+5] = ymat[k][uindex[i+5]] & z4[i+5];
+                    z3[i+6] = ymat[k][uindex[i+6]] & z4[i+6];
+                    z3[i+7] = ymat[k][uindex[i+7]] & z4[i+7];
+                    z3[i+8] = ymat[k][uindex[i+8]] & z4[i+8];
+                    z3[i+9] = ymat[k][uindex[i+9]] & z4[i+9];
+                    z3[i+10] = ymat[k][uindex[i+10]] & z4[i+10];
+                    z3[i+11] = ymat[k][uindex[i+11]] & z4[i+11];
+                    z3[i+12] = ymat[k][uindex[i+12]] & z4[i+12];
+                    z3[i+13] = ymat[k][uindex[i+13]] & z4[i+13];
+                    z3[i+14] = ymat[k][uindex[i+14]] & z4[i+14];
+                    z3[i+15] = ymat[k][uindex[i+15]] & z4[i+15];
+
+                }
+                for(; i < n_blocks; i++){
+                    z3[i] = ymat[k][uindex[i]] & z4[i];
+                }
+                /*
                 for(int i=0; i < n_blocks; i++){
                     z3[i] = ymat[k][uindex[i]] & z4[i];
                 }
+                */
                 child_count[k] = count1s(z3, n_blocks);
                 cum_child_count += child_count[k];
                 tmp = (double)child_count[k]/left_size;
@@ -2482,27 +2611,36 @@ dt_node_t* build_tree_hybrid(rf_model_t *model, bitblock_t ***bx, bitblock_t **y
 
 void predict(rf_model_t *model, bx_info_t * bx_new, double **pred, int vote_method, int nthreads){    
     if(model == NULL || model->ntrees == 0) return;
+
 #ifdef _OPENMP
     omp_set_num_threads(nthreads);
 #endif
+
     // unpack parameters
     int J = (model->yc)->nlevels;
     int n = bx_new->n;
     int n_blocks = bx_new->n_blocks;
     bitblock_t ***bx = bx_new->bx; 
 
-    int **pred_tree = (int**)malloc(J*sizeof(int*));
-    for(int k = 0; k < J; k++){
-        pred_tree[k] = (int*)malloc(n_blocks*8*sizeof(bitblock_t)*sizeof(int));  // size must be this, not simply n
-        memset(pred_tree[k], 0, n_blocks*8*sizeof(bitblock_t)*sizeof(int));
-        memset(pred[k], 0, n*sizeof(double));  // clear the output
-    }
-
+    int ***pred_tree = (int***)malloc(model->ntrees*sizeof(int**));
     for(int t = 0; t < model->ntrees; t++){
+        pred_tree[t] = (int**)malloc(J*sizeof(int*));
+        for(int k = 0; k < J; k++){
+            pred_tree[t][k] = (int*)malloc(n_blocks*8*sizeof(bitblock_t)*sizeof(int));  // size must be this, not simply n
+            memset(pred_tree[t][k], 0, n_blocks*8*sizeof(bitblock_t)*sizeof(int));
+        }
+    }
+    
+    for(int k = 0; k < J; k++)
+        memset(pred[k], 0, n*sizeof(double));  // clear the output
+
+    int t;
+    #pragma omp parallel for
+    for(t = 0; t < model->ntrees; t++){
         dt_leaf_t *leaves = model->tree_leaves[t];
         while(leaves){
             int i;
-            #pragma omp parallel for 
+            //#pragma omp parallel for 
             for(i = 0; i < n_blocks; i++){
                 bitblock_t test0 = MAXBITBLOCK_VALUE;
                 for(int d = 0; d < leaves->depth; d++){
@@ -2521,7 +2659,7 @@ void predict(rf_model_t *model, bx_info_t * bx_new, double **pred, int vote_meth
                 for(bitblock_t k = 1 << (8*sizeof(bitblock_t) - 1); k > 0; k >>= 1){
                     if(test0 & k){
                         for(int j = 0; j < J; j++){
-                            pred_tree[j][i*8*sizeof(bitblock_t)+bit] = leaves->count[j];
+                            pred_tree[t][j][i*8*sizeof(bitblock_t)+bit] = leaves->count[j];
                         }
                     }
                     bit++;
@@ -2529,40 +2667,19 @@ void predict(rf_model_t *model, bx_info_t * bx_new, double **pred, int vote_meth
             }
             leaves = leaves->next;
         } 
-
-        if(vote_method == 0){
-            int i;
-            #pragma omp parallel for
-            for(i = 0; i < n; i++){
-                for(int k = 0; k < J; k++){
-                    pred[k][i] += pred_tree[k][i];
-                }                
-            }
-        } else {
-            int i;
-            #pragma omp parallel for
-            for(i = 0; i < n; i++){
-                double this_sum = 0;
-                for(int k = 0; k < J; k++){
-                    this_sum += pred_tree[k][i];
-                }
-                for(int k = 0; k < J; k++){
-                    pred[k][i] += 1.0 * pred_tree[k][i] / this_sum;
-                }                
-            }
-
-        }
-
     }
     
     // average the predictions
     if(vote_method == 0){
         int i;
-        #pragma omp parallel for 
+        //#pragma omp parallel for 
         for(i = 0; i < n; i++){
             double total_count = 0;
             for(int k = 0; k < J; k++){
-                total_count += pred[k][i];
+                for(int t = 0; t < model->ntrees; t++){
+                    total_count += pred_tree[t][k][i];
+                    pred[k][i] += pred_tree[t][k][i];
+                }
             }
             for(int k = 0; k < J; k++){
                 pred[k][i] = pred[k][i] / total_count;
@@ -2570,17 +2687,27 @@ void predict(rf_model_t *model, bx_info_t * bx_new, double **pred, int vote_meth
         }
     } else {
         int i;
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for(i = 0; i < n; i++){
-            for(int k = 0; k < J; k++){
-                pred[k][i] = pred[k][i] / model->ntrees;
+            for(int t = 0; t < model->ntrees; t++){
+                double this_sum = 0;
+                for(int k = 0; k < J; k++){
+                    this_sum += pred_tree[t][k][i];
+                }
+                for(int k = 0; k < J; k++)
+                    pred[k][i] += pred_tree[t][k][i] / this_sum;
             }
+            for(int k = 0; k < J; k++)
+                pred[k][i] = pred[k][i] / model->ntrees;
         }        
     }
 
     // release temp memory
-    for(int k = 0; k < J; k++){
-        free(pred_tree[k]);
+    for(int t = 0; t < model->ntrees; t++){
+        for(int k = 0; k < J; k++){
+            free(pred_tree[t][k]);
+        }
+        free(pred_tree[t]);
     }
     free(pred_tree);  
 }
