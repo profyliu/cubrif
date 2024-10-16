@@ -56,7 +56,7 @@ void find_best_split_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, 
                             int *candidate_index, int *split_var, int* split_bx, cudaStream_t *streams, int tid);
 void bootstrap_index_array(int n, int *array);
 dt_node_t* build_tree(rf_model_t *model, bitblock_t ***bx, bitblock_t **ymat, int n_blocks, int J, int ps, int max_depth, int min_node_size,
-                      int *child_count, int *count, bitblock_t *cur, bitblock_t *useful_cur, bitblock_t *z3, bitblock_t *z4);
+                      int *child_count, int *count, bitblock_t *cur, bitblock_t *useful_cur, bitblock_t *z3, bitblock_t *z4, int *uindex);
 dt_node_t* build_tree_cuda(rf_model_t *model, bitblock_t *d_bx, size_t n_blocks, dim3 block, dim3 grid, bitblock_t *d_ymat, int J, int ps, int max_depth, int min_node_size,
                             bitblock_t *d_cur, bitblock_t *d_z3, bitblock_t *d_z4, 
                             int* d_count, int* d_ocount, unsigned char *d_SetBitTable,
